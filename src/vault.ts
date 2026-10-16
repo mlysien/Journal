@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { daysBetween, todayIso } from './dates';
-import { parseBlock, splitBlocks } from './markdown';
+import { splitBlocks } from './markdown';
 import type { Accent, Theme } from './theme';
 import type { VaultSnapshot } from '../electron/api';
 import { dailyDateOf, dailyPath, DEFAULT_DAILY, formatProblem, isDailyDir, LEGACY_DAILY, normalizeFolder, type DailyLocation } from './dailyFormat';
+import { dailyFileText, parseDailyFile, taskDay } from './dailyTasks';
 
 export type Pri = 'h' | 'm' | 'l';
 
@@ -66,16 +67,15 @@ export interface Vault {
   folders: string[];
   /** Non-Markdown files in the vault (attachments), relative paths. Not saved; read from disk. */
   assets: string[];
-  /** Daily note bodies, keyed by ISO date. Every entry is a file on disk. */
+  /** Daily note bodies (without their tasks section), keyed by ISO date. Every entry is a file on disk. */
   daily: Record<string, string[]>;
+  /** Daily tasks of every day. Each is saved in the note of its `taskDay`. */
   tasks: DailyTask[];
-  /** First day each `- [ ]` line in a regular note was seen, for its age. */
-  seen: Record<string, string>;
   lastRollover: string;
   prefs: Prefs;
 }
 
-export type TabId = string; // 'daily:YYYY-MM-DD' | 'note:<id>' | 'tasks' | 'settings'
+export type TabId = string; // 'daily:YYYY-MM-DD' | 'note:<id>' | 'settings'
 
 export interface UiState {
   tabs: TabId[];
@@ -85,11 +85,11 @@ export interface UiState {
   sidebarHidden: boolean;
 }
 
-/** What `.journal/state.json` holds: everything that is not a Markdown file. */
+/** What `.journal/state.json` holds: settings and UI state. Daily tasks live in the daily notes. */
 interface StateFile {
   version: 1;
-  tasks: DailyTask[];
-  seen: Record<string, string>;
+  /** Only in state files from before tasks moved into daily notes; read once, then dropped. */
+  tasks?: DailyTask[];
   lastRollover: string;
   prefs: Prefs;
   ui: UiState;
@@ -97,10 +97,10 @@ interface StateFile {
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-const DEFAULT_PREFS: Prefs = { theme: 'dark', accent: 'violet', textSize: 'default', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true, meta: true, live: true, spell: false };
+const DEFAULT_PREFS: Prefs = { theme: 'dark', accent: 'violet', textSize: 'small', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true, meta: true, live: true, spell: false };
 
 const defaultUi = (today: string): UiState => ({
-  tabs: [`daily:${today}`, 'tasks'],
+  tabs: [`daily:${today}`],
   active: `daily:${today}`,
   sideTab: 'files',
   open: { [`m:${today.slice(0, 7)}`]: true, 'f:Projects': true },
@@ -145,7 +145,7 @@ export function setDailyLocation(v: Vault, folder: string, format: string): { va
   if (problem) return { error: problem };
   if (/[\\:*?"<>|]/.test(loc.folder)) return { error: 'The folder name contains characters not allowed in file names' };
   const notePaths = new Set(Object.values(v.notes).map(n => n.path.toLowerCase()));
-  const clash = Object.keys(v.daily).find(d => notePaths.has(dailyPath(loc, d).toLowerCase()));
+  const clash = dailyFileDates(v).find(d => notePaths.has(dailyPath(loc, d).toLowerCase()));
   if (clash) return { error: `The daily note for ${clash} would replace the note ${dailyPath(loc, clash)}` };
   const folders = loc.folder && !v.folders.includes(loc.folder) ? [...v.folders, loc.folder] : v.folders;
   return { vault: { ...v, folders, prefs: { ...v.prefs, daily: loc } } };
@@ -177,8 +177,7 @@ function seedNotes(today: string): Note[] {
       '',
       '## How it works',
       '- Open **Today** and add tasks. Anything left unchecked moves to tomorrow on its own',
-      '- Tasks you write as `- [ ]` in any other note show up in **All open tasks**',
-      '- Add `!high` or `!low` at the end of a note task to set its priority',
+      '- Add `!high` or `!low` at the end of a `- [ ]` line to mark its priority',
       '- Link notes with double brackets, like [[Example project]] or [[' + today + ']]',
       '',
       '## Keyboard',
@@ -196,7 +195,7 @@ function seedNotes(today: string): Note[] {
       '',
       '> Every note is a plain Markdown file in your vault folder, so any editor can open it.',
     ].join('\n'))),
-    mk('Projects', 'Example project', ['A project note. Its open tasks are collected in All open tasks.', '', '## Next', '- [ ] Sketch the first milestone !high', '- [ ] Write a short README', '- [ ] Clean up old branches !low']),
+    mk('Projects', 'Example project', ['A project note, with its own checklist.', '', '## Next', '- [ ] Sketch the first milestone !high', '- [ ] Write a short README', '- [ ] Clean up old branches !low']),
   ];
 }
 
@@ -218,11 +217,16 @@ export function fromSnapshot(snap: VaultSnapshot, today: string): Loaded {
     ? { folder: normalizeFolder(snap.obsidianDaily.folder ?? ''), format: snap.obsidianDaily.format?.trim() || 'YYYY-MM-DD' }
     : null;
   const prefs: Prefs = { ...DEFAULT_PREFS, ...state?.prefs, ...(obsidian && !formatProblem(obsidian.format) ? { daily: obsidian } : {}) };
-  const notes: Record<string, Note> = {}, daily: Record<string, string[]> = {};
+  const notes: Record<string, Note> = {}, daily: Record<string, string[]> = {}, tasks: DailyTask[] = [];
   for (const [path, content] of Object.entries(snap.files)) {
     // Files in the old Journal/YYYY-MM/YYYY-MM-DD.md layout are daily notes too; saving moves them.
     const date = dailyDateOf(prefs.daily, path) ?? path.match(LEGACY_DAILY)?.[1];
-    if (date && !daily[date]) { daily[date] = splitBlocks(content); continue; }
+    if (date && !daily[date]) {
+      const parsed = parseDailyFile(content, date);
+      daily[date] = parsed.body;
+      tasks.push(...parsed.tasks);
+      continue;
+    }
     const slash = path.lastIndexOf('/');
     notes[path] = { id: path, path, title: path.slice(slash + 1, -3), folder: slash < 0 ? null : path.slice(0, slash), blocks: splitBlocks(content) };
   }
@@ -234,17 +238,25 @@ export function fromSnapshot(snap: VaultSnapshot, today: string): Loaded {
 
   const vault: Vault = {
     version: 1, root: snap.root, notes, folders: [...folders], assets: snap.assets, daily,
-    tasks: state?.tasks ?? [], seen: state?.seen ?? {},
+    // Tasks from an older state file get written into their daily notes on the first save.
+    tasks: tasks.concat(state?.tasks ?? []),
     lastRollover: state?.lastRollover ?? today,
     prefs,
   };
-  return { vault: trackSeen(startDay(vault, today), today), ui: { ...defaultUi(today), ...state?.ui }, files: snap.files, dirs: snap.dirs };
+  return { vault: startDay(vault, today), ui: { ...defaultUi(today), ...state?.ui }, files: snap.files, dirs: snap.dirs };
+}
+
+/** Days that have a daily note file: a body, or tasks to keep in it. */
+function dailyFileDates(v: Vault): string[] {
+  return [...new Set([...Object.keys(v.daily), ...v.tasks.map(taskDay)])];
 }
 
 function filesOf(v: Vault): Record<string, string> {
   const out: Record<string, string> = {};
   for (const n of Object.values(v.notes)) out[n.path] = n.blocks.join('\n');
-  for (const [date, L] of Object.entries(v.daily)) out[dailyPath(v.prefs.daily, date)] = L.join('\n');
+  const byDay = new Map<string, DailyTask[]>();
+  for (const t of v.tasks) { const d = taskDay(t); byDay.set(d, [...(byDay.get(d) ?? []), t]); }
+  for (const date of dailyFileDates(v)) out[dailyPath(v.prefs.daily, date)] = dailyFileText(byDay.get(date) ?? [], v.daily[date] ?? ['']);
   return out;
 }
 
@@ -252,10 +264,8 @@ function filesOf(v: Vault): Record<string, string> {
 function stateOf(v: Vault, ui: UiState): string {
   const pathOf = (id: string) => v.notes[id]?.path ?? id;
   const tab = (t: TabId) => (t.startsWith('note:') ? 'note:' + pathOf(t.slice(5)) : t);
-  const seen: Record<string, string> = {};
-  for (const [k, d] of Object.entries(v.seen)) { const i = k.indexOf('\u0000'); seen[pathOf(k.slice(0, i)) + k.slice(i)] = d; }
   const file: StateFile = {
-    version: 1, tasks: v.tasks, seen, lastRollover: v.lastRollover, prefs: v.prefs,
+    version: 1, lastRollover: v.lastRollover, prefs: v.prefs,
     ui: { ...ui, tabs: ui.tabs.map(tab), active: ui.active && tab(ui.active) },
   };
   return JSON.stringify(file, null, 2);
@@ -274,15 +284,6 @@ export function rollover(v: Vault, today: string): Vault {
     ? v.tasks.map(t => (!t.done && t.day < today ? { ...t, day: today, carried: t.carried + 1 } : t))
     : v.tasks;
   return { ...v, tasks, lastRollover: today };
-}
-
-/** Records the first-seen day of every note task, so note tasks have an age. */
-function trackSeen(v: Vault, today: string): Vault {
-  let seen: Record<string, string> | null = null;
-  for (const t of noteTasks(v)) {
-    if (!v.seen[t.key]) (seen ??= { ...v.seen })[t.key] = today;
-  }
-  return seen ? { ...v, seen } : v;
 }
 
 export function useVault(initial: Loaded) {
@@ -339,11 +340,11 @@ export function useVault(initial: Loaded) {
   }, [vault, ui, save]);
   useEffect(() => { window.journal.onFlush(save); }, [save]);
 
-  const update = useCallback((fn: (v: Vault) => Vault) => setVault(v => trackSeen(fn(v), todayIso())), []);
+  const update = useCallback((fn: (v: Vault) => Vault) => setVault(fn), []);
   return { today, vault, update, ui, setUi, saveError, save };
 }
 
-/* ---------- note tasks ---------- */
+/* ---------- priority marks ---------- */
 
 const PRI_MARK = /\s+!(high|med|medium|low)\s*$/i;
 
@@ -354,71 +355,28 @@ export function splitPriMark(text: string): { text: string; pri: Pri | null } {
   return { text: text.slice(0, m.index), pri: k === 'high' ? 'h' : k === 'low' ? 'l' : 'm' };
 }
 
-export interface NoteTask {
-  key: string;
-  noteId: string;
-  block: number;
-  title: string;
-  pri: Pri;
-  done: boolean;
-}
-
-export function noteTasks(v: Vault): NoteTask[] {
-  const out: NoteTask[] = [];
-  for (const n of Object.values(v.notes)) {
-    n.blocks.forEach((src, block) => {
-      const b = parseBlock(src);
-      if (b.type !== 'task' || !b.text.trim()) return;
-      const { text, pri } = splitPriMark(b.text);
-      out.push({ key: `${n.id}\u0000${text}`, noteId: n.id, block, title: text, pri: pri ?? 'm', done: b.checked });
-    });
-  }
-  return out;
-}
-
 export function setNoteTaskPri(src: string, pri: Pri): string {
   const mark = pri === 'h' ? ' !high' : pri === 'l' ? ' !low' : '';
   return src.replace(PRI_MARK, '').replace(/\s+$/, '') + mark;
 }
 
-/** Replace a `- [ ]` line's text, keeping its indent, checkbox and priority marker. */
-export function setNoteTaskTitle(src: string, title: string): string {
-  const m = src.match(/^(\s*- \[[ xX]\]\s?)(.*)$/);
-  if (!m) return src;
-  const mark = m[2].match(PRI_MARK)?.[0] ?? '';
-  return m[1] + title.trim() + mark;
-}
-
-export function toggleTaskLine(src: string): string {
-  return /- \[[xX]\]/.test(src) ? src.replace(/- \[[xX]\]/, '- [ ]') : src.replace('- [ ]', '- [x]');
-}
-
-/* ---------- unified task view ---------- */
+/* ---------- daily tasks ---------- */
 
 export interface TaskItem {
   id: string;
   title: string;
   pri: Pri;
   age: number;
-  carried: number | null;
+  carried: number;
   done: boolean;
   createdOn: string;
-  source: { kind: 'daily' } | { kind: 'note'; noteId: string; block: number };
 }
 
-export function allTaskItems(v: Vault, today: string): TaskItem[] {
-  const daily: TaskItem[] = v.tasks.map(t => ({
+export function dailyTaskItems(v: Vault, today: string): TaskItem[] {
+  return v.tasks.map(t => ({
     id: t.id, title: t.title, pri: t.pri, age: Math.max(0, daysBetween(t.createdOn, today)), carried: t.carried,
-    done: !!t.done, createdOn: t.createdOn, source: { kind: 'daily' },
+    done: !!t.done, createdOn: t.createdOn,
   }));
-  const fromNotes: TaskItem[] = noteTasks(v).map(t => {
-    const createdOn = v.seen[t.key] ?? today;
-    return {
-      id: 'n:' + t.key, title: t.title, pri: t.pri, age: Math.max(0, daysBetween(createdOn, today)), carried: null,
-      done: t.done, createdOn, source: { kind: 'note', noteId: t.noteId, block: t.block },
-    };
-  });
-  return daily.concat(fromNotes);
 }
 
 /** 0 = fresh, 1 = aging (5+ days or 3+ carries), 2 = long-running (10+ days or 6+ carries). */

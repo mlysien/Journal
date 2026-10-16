@@ -4,7 +4,7 @@ A local-first Markdown journal for daily notes and a todo list. Desktop app for 
 
 - **Daily note**: one note per day, with a task list at the top. Unchecked tasks carry over to the next day on their own, and each task shows its age and carry-over count.
 - **Notes**: Markdown with live preview. Click a line to edit its raw Markdown. Supports headings, lists, `- [ ]` checkboxes, quotes, fenced code with highlighting, tables, `[[wiki links]]`, and images and files as attachments.
-- **All open tasks**: daily tasks plus every `- [ ]` line from your other notes. You can group, filter and sort them. Add `!high` or `!low` to the end of a note task to set its priority.
+- **Checklists in notes**: `- [ ]` lines work in any note. Add `!high` or `!low` to the end of one to mark its priority.
 
 ## Your vault
 
@@ -14,8 +14,18 @@ Everything lives in one folder, by default `~/Documents/Journal`. You can change
 Journal/2026/10/16.10.2026.md   daily notes
 Projects/Example project.md     notes, in folders or at the top level
 Projects/Attachments/           files pasted or dropped into notes in Projects/
-.journal/state.json             daily tasks, settings, open tabs
+.journal/state.json             settings, open tabs
 ```
+
+Each day's tasks are saved in that day's note, in a `## Tasks` section at the top:
+
+```markdown
+## Tasks
+- [ ] Write the report ➕ 2026-10-10 [carried:: 3] !high
+- [x] Call the bank ➕ 2026-10-16 ✅ 2026-10-16
+```
+
+`➕` is the day a task was created and `✅` the day it was done (the Obsidian Tasks plugin's format), `[carried:: n]` how many times it moved to a new day, and `!high` / `!low` its priority. Open tasks move into today's note when the day starts; done tasks stay in the note of the day they were done. Vaults from older versions, which kept tasks in `.journal/state.json`, are converted on the first start.
 
 Daily notes are placed like in Obsidian's Daily notes plugin: a folder plus a date format with the same tokens (`YYYY`, `MM`, `DD`, `MMMM`, `Do`, `[text]`…), where `/` makes subfolders. The default is folder `Journal` with format `YYYY/MM/DD.MM.YYYY`. Change both in **Settings → Daily notes**; existing daily notes are moved to match. When you open an Obsidian vault for the first time, its `.obsidian/daily-notes.json` settings are used.
 

@@ -5,12 +5,12 @@ import { themeStyle, UI } from './theme';
 import { dailyName, dateFromName } from './dailyFormat';
 import { AssetContext, makeAssets } from './assets';
 import {
-  addFolder, allTaskItems, dailyDates, dailyFile, folderPath, setDailyLocation, LINE_WIDTH, notePath, renameNote, setNoteTaskPri, setNoteTaskTitle, sorter, TEXT_ZOOM, toggleTaskLine, uid, useVault,
-  type Loaded, type Pri, type Prefs, type TabId, type Vault,
+  addFolder, dailyDates, dailyFile, dailyTaskItems, folderPath, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
+  type Loaded, type Pri, type Prefs, type TabId,
 } from './vault';
 import { Editor } from './components/Editor';
+import { Search } from './components/Search';
 import { Sidebar } from './components/Sidebar';
-import { TasksPage } from './components/TasksPage';
 import { SettingsPage } from './components/SettingsPage';
 import { PastTasks, TodayTasks, type TaskActions } from './components/Tasks';
 import { ChevronLeft, ChevronRight, Close, Plus, SidebarIcon } from './components/icons';
@@ -32,16 +32,41 @@ export function App({ initial }: { initial: Loaded }) {
   const scroller = useRef<HTMLDivElement>(null);
   const { prefs } = vault;
 
-  const items = useMemo(() => allTaskItems(vault, today), [vault, today]);
-  const allOpen = items.filter(t => !t.done);
+  const items = useMemo(() => dailyTaskItems(vault, today), [vault, today]);
   const dates = useMemo(() => dailyDates(vault, today), [vault, today]);
   const dailyById = useMemo(() => new Map(vault.tasks.map(t => [t.id, t])), [vault.tasks]);
 
-  const validTab = (id: TabId) => id === 'tasks' || id === 'settings' || (id.startsWith('daily:') && isIsoDate(id.slice(6))) || (id.startsWith('note:') && !!vault.notes[id.slice(5)]);
+  const validTab = (id: TabId) => id === 'settings' || (id.startsWith('daily:') && isIsoDate(id.slice(6))) || (id.startsWith('note:') && !!vault.notes[id.slice(5)]);
   const tabs = ui.tabs.filter(validTab);
   const active = ui.active && validTab(ui.active) ? ui.active : null;
 
   useEffect(() => { scroller.current?.scrollTo(0, 0); }, [active]);
+
+  /* ---------- search ---------- */
+
+  const [searching, setSearching] = useState(false);
+  /** A block to scroll to and flash once its note is showing. */
+  const [jump, setJump] = useState<{ tab: TabId; block: number } | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'k' || (e.shiftKey && k === 'f'))) { e.preventDefault(); setSearching(s => !s); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+  useEffect(() => {
+    if (!jump || jump.tab !== active) return;
+    const id = requestAnimationFrame(() => {
+      const el = scroller.current?.querySelector<HTMLElement>(`[data-bi="${jump.block}"]`);
+      if (el) {
+        el.scrollIntoView({ block: 'center' });
+        el.classList.remove('search-hit'); void el.offsetWidth; el.classList.add('search-hit');
+      }
+      setJump(null);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [jump, active]);
   useEffect(() => { window.journal.setTitleBar(TITLE_BAR[prefs.theme]); }, [prefs.theme]);
   useEffect(() => {
     if (justCreated?.focus === 'title' && active === 'note:' + justCreated.id) { titleInput.current?.focus(); titleInput.current?.select(); }
@@ -81,32 +106,20 @@ export function App({ initial }: { initial: Loaded }) {
 
   /* ---------- tasks ---------- */
 
-  const editNoteBlock = (v: Vault, noteId: string, block: number, fn: (s: string) => string): Vault => {
-    const n = v.notes[noteId];
-    const blocks = n.blocks.map((b, i) => (i === block ? fn(b) : b));
-    return { ...v, notes: { ...v.notes, [noteId]: { ...n, blocks } } };
-  };
   const actions: TaskActions = {
-    toggle: t => update(v => t.source.kind === 'note'
-      ? editNoteBlock(v, t.source.noteId, t.source.block, toggleTaskLine)
-      : { ...v, tasks: v.tasks.map(x => x.id !== t.id ? x : x.done ? { ...x, done: false, doneOn: undefined, day: today } : { ...x, done: true, doneOn: today }) }),
-    setPri: (t, pri) => update(v => t.source.kind === 'note'
-      ? editNoteBlock(v, t.source.noteId, t.source.block, s => setNoteTaskPri(s, pri))
-      : { ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, pri } : x)) }),
-    remove: t => { if (t.source.kind === 'daily') update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) })); },
+    toggle: t => update(v => ({ ...v, tasks: v.tasks.map(x => x.id !== t.id ? x : x.done ? { ...x, done: false, doneOn: undefined, day: today } : { ...x, done: true, doneOn: today }) })),
+    setPri: (t, pri) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, pri } : x)) })),
+    remove: t => update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) })),
     openLink: name => openByTitle(name),
-    rename: (t, title) => update(v => t.source.kind === 'note'
-      ? editNoteBlock(v, t.source.noteId, t.source.block, s => setNoteTaskTitle(s, title))
-      : { ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, title } : x)) }),
+    rename: (t, title) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, title } : x)) })),
     relink: (draft, final) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.title.includes(draft) ? { ...x, title: x.title.replace(draft, final) } : x)) })),
   };
   const addTask = (title: string, pri: Pri) =>
     update(v => ({ ...v, tasks: [{ id: uid(), title, pri, createdOn: today, carried: 0, day: today }, ...v.tasks] }));
 
-  const dailyItems = items.filter(t => t.source.kind === 'daily');
   const tasksOn = (d: string) => ({
-    open: dailyItems.filter(t => !t.done && dailyById.get(t.id)?.day === d).sort(sorter('priority')),
-    done: dailyItems.filter(t => t.done && dailyById.get(t.id)?.doneOn === d).sort(sorter('priority')),
+    open: items.filter(t => !t.done && dailyById.get(t.id)?.day === d).sort(sorter('priority')),
+    done: items.filter(t => t.done && dailyById.get(t.id)?.doneOn === d).sort(sorter('priority')),
   });
 
   /* ---------- active view ---------- */
@@ -129,7 +142,7 @@ export function App({ initial }: { initial: Loaded }) {
   });
   const setPrefs = (p: Partial<Prefs>) => update(v => ({ ...v, prefs: { ...v.prefs, ...p } }));
 
-  const tabTitle = (id: TabId) => id === 'tasks' ? 'All open tasks' : id === 'settings' ? 'Settings' : id.startsWith('daily:') ? dailyName(vault.prefs.daily, id.slice(6)) : vault.notes[id.slice(5)]?.title || 'Untitled';
+  const tabTitle = (id: TabId) => id === 'settings' ? 'Settings' : id.startsWith('daily:') ? dailyName(vault.prefs.daily, id.slice(6)) : vault.notes[id.slice(5)]?.title || 'Untitled';
 
   let crumbs: string[] = [];
   let prevDay: string | undefined, nextDay: string | undefined;
@@ -143,7 +156,6 @@ export function App({ initial }: { initial: Loaded }) {
   const saved = saveError ? `Not saved: ${saveError}` : 'Saved';
   if (date) { statusLeft = dailyFile(vault, date); statusRight = `${words} words · Markdown · ${saved}`; }
   else if (note) { statusLeft = note.path; statusRight = `${words} words · Markdown · ${saved}`; }
-  else if (active === 'tasks') { statusLeft = 'Tasks are read from every note in the vault'; statusRight = `${allOpen.length} open · ${items.length - allOpen.length} done`; }
 
   const todayTasks = tasksOn(today);
 
@@ -180,7 +192,7 @@ export function App({ initial }: { initial: Loaded }) {
         <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: TEXT_ZOOM[prefs.textSize] }}>
           {!ui.sidebarHidden && (
             <Sidebar vault={vault} ui={{ ...ui, active }} setUi={setUi} today={today} dates={dates}
-              todayOpen={todayTasks.open.length} allOpen={allOpen.length} open={openTab}
+              todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)}
               onNewNote={folder => newNote('Untitled', folder)} onNewFolder={newFolder} />
           )}
 
@@ -232,9 +244,6 @@ export function App({ initial }: { initial: Loaded }) {
                 </div>
               )}
 
-              {active === 'tasks' && (
-                <TasksPage vault={vault} open={allOpen} actions={actions} openToday={openToday} openNote={id => openTab('note:' + id)} />
-              )}
 
               {active === 'settings' && (
                 <SettingsPage prefs={prefs} setPrefs={setPrefs} root={vault.root} today={today}
@@ -268,6 +277,10 @@ export function App({ initial }: { initial: Loaded }) {
             </div>
           </main>
           </AssetContext.Provider>
+          {searching && (
+            <Search vault={vault} onClose={() => setSearching(false)}
+              onOpen={(tab, block) => { setSearching(false); openTab(tab); if (block !== null) setJump({ tab, block }); }} />
+          )}
         </div>
       </div>
     </div>

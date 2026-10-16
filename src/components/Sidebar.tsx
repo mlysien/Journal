@@ -3,7 +3,7 @@ import { fmt, isoWeek, daysBetween } from '../dates';
 import { MONO } from '../theme';
 import { wordsOf } from '../markdown';
 import type { Note, TabId, UiState, Vault } from '../vault';
-import { CalendarIcon, ChevronRight, DayIcon, FileIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GearIcon, JournalIcon, ListIcon, NotePlusIcon } from './icons';
+import { SearchIcon, CalendarIcon, ChevronRight, CollapseAllIcon, DayIcon, ExpandAllIcon, FileIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GearIcon, JournalIcon, NotePlusIcon } from './icons';
 import { addDays, dayLabel } from './Tasks';
 import { formatDate } from '../dailyFormat';
 
@@ -14,8 +14,8 @@ interface Props {
   today: string;
   dates: string[];
   todayOpen: number;
-  allOpen: number;
   open: (id: TabId) => void;
+  onSearch: () => void;
   onNewNote: (folder: string | null) => void;
   /** Returns an error message, or null once the folder exists. */
   onNewFolder: (parent: string | null, name: string) => string | null;
@@ -83,7 +83,7 @@ function buildTree(vault: Vault): FolderNode {
 
 const countNotes = (n: FolderNode): number => n.notes.length + n.folders.reduce((a, f) => a + countNotes(f), 0);
 
-export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, allOpen, open, onNewNote, onNewFolder }: Props) {
+export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSearch, onNewNote, onNewFolder }: Props) {
   const active = ui.active;
   const [draft, setDraft] = useState<{ parent: string | null; name: string; error: string | null } | null>(null);
   const loc = vault.prefs.daily;
@@ -93,8 +93,16 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, allOpen, op
   const isOpen = (k: string) => ui.open[k] ?? (k === 'f:' + loc.folder || k === 'd:' || todayDirs.has(k));
   const setOpen = (k: string, v: boolean) => setUi(u => ({ ...u, open: { ...u.open, [k]: v } }));
   const rows: Row[] = [];
+  /** Every folder row in the Files tab, open or not, for collapse/expand all. */
+  const folderKeys: string[] = [];
 
   if (ui.sideTab === 'files') {
+    const tree = buildTree(vault);
+    const collect = (n: FolderNode) => n.folders.forEach(f => { folderKeys.push('f:' + f.path); collect(f); });
+    collect(tree);
+    if (!loc.folder) folderKeys.push('d:');
+    for (const d of dates) dailyRel(d).slice(0, -1).forEach((_, i, a) => folderKeys.push('d:' + a.slice(0, i + 1).join('/')));
+
     /** The daily notes, nested by the folders their format creates. `dates` is newest first. */
     const dailyRows = (depth: number) => {
       const seen = new Set<string>();
@@ -129,7 +137,7 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, allOpen, op
       }
       node.notes.forEach(n => rows.push({ kind: 'note', key: n.id, label: n.title || 'Untitled', depth, meta: '', tab: 'note:' + n.id }));
     };
-    walk(buildTree(vault), 0);
+    walk(tree, 0);
   } else {
     const thisWeek = isoWeek(today), lastWeek = isoWeek(addDays(today, -7));
     const groupOf = (d: string) => {
@@ -155,6 +163,8 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, allOpen, op
     if (folder) setOpen('f:' + folder, true);
     onNewNote(folder);
   };
+  const anyOpen = folderKeys.some(isOpen);
+  const setAllOpen = (v: boolean) => setUi(u => ({ ...u, open: { ...u.open, ...Object.fromEntries(folderKeys.map(k => [k, v])) } }));
   const commitDraft = () => {
     if (!draft) return;
     if (!draft.name.trim()) { setDraft(null); return; }
@@ -167,14 +177,21 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, allOpen, op
     <aside style={{ width: 256, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--side)', borderRight: '1px solid var(--border)', minHeight: 0 }}>
       <div style={{ padding: '8px 8px 4px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <NavLink act={active === 'daily:' + today} onClick={() => open('daily:' + today)} icon={<CalendarIcon />} label="Today" meta={fmt(today, { month: 'short', day: 'numeric' })} />
-        <NavLink act={active === 'tasks'} onClick={() => open('tasks')} icon={<ListIcon />} label="All open tasks" meta={String(allOpen)} metaStyle={{ fontVariantNumeric: 'tabular-nums' }} />
+        <NavLink act={false} onClick={onSearch} icon={<SearchIcon />} label="Search" meta={window.journal.platform === 'darwin' ? '⌘K' : 'Ctrl K'} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 10px 6px 12px' }}>
         <div style={{ flex: 1, display: 'flex', gap: 2, padding: 2, background: 'var(--hover)', borderRadius: 7 }}>
           <button onClick={() => setUi(u => ({ ...u, sideTab: 'files' }))} style={segStyle(ui.sideTab === 'files')}>Files</button>
           <button onClick={() => setUi(u => ({ ...u, sideTab: 'daily' }))} style={segStyle(ui.sideTab === 'daily')}>Daily notes</button>
         </div>
-        <CreateButtons onNote={() => newNoteIn(null)} onFolder={() => startFolder(null)} />
+        <span style={{ display: 'flex', gap: 1 }}>
+          {ui.sideTab === 'files' && folderKeys.length > 0 && (
+            <button title={anyOpen ? 'Collapse all' : 'Expand all'} className="hov-text-active" style={smallBtn} onClick={() => setAllOpen(!anyOpen)}>
+              {anyOpen ? <CollapseAllIcon /> : <ExpandAllIcon />}
+            </button>
+          )}
+          <CreateButtons onNote={() => newNoteIn(null)} onFolder={() => startFolder(null)} />
+        </span>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 12px' }}>
         {rows.map(r => {

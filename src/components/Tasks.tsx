@@ -261,32 +261,5 @@ export function PastTasks({ done, open, actions, showMeta, onOpenToday }: { done
   );
 }
 
-/* ---------- all open tasks ---------- */
-
-export const ALL_GRID = '24px minmax(0,1fr) 96px 64px 64px';
-
-export function AllTaskRow({ t, actions, source, menu, setMenu }: { t: TaskItem; actions: TaskActions; source: string | null; menu: string | null; setMenu: ReturnType<typeof usePriMenu>[1] }) {
-  const tone = toneOf(t), carried = t.carried ?? 0;
-  return (
-    <div data-row="1" tabIndex={0} className="task-row" onKeyDown={e => rowKey(e, t, actions, setMenu)}
-      style={{ display: 'grid', gridTemplateColumns: ALL_GRID, gap: 16, alignItems: 'center', padding: '8px 10px', borderRadius: 7, outline: 'none' }}>
-      <button className="checkbox" onClick={e => { e.stopPropagation(); actions.toggle(t); }} title="Complete" style={boxStyle(false)} />
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
-        <TaskTitle t={t} actions={actions} style={titleStyle(t)} />
-        {source && <span style={{ fontSize: 12.5, color: 'var(--faint)', whiteSpace: 'nowrap' }}>{source}</span>}
-      </div>
-      <span data-primenu="1" style={{ position: 'relative', display: 'flex' }}>
-        <button className="hov-text-active" onClick={e => { e.stopPropagation(); setMenu(m => (m === t.id ? null : t.id)); }} title="Change priority"
-          style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'inherit', fontSize: 12.5, color: 'var(--muted)', border: 'none', background: 'transparent', padding: '3px 8px 3px 6px', marginLeft: -6, borderRadius: 5, cursor: 'pointer', textAlign: 'left' }}>
-          <span style={dot(t.pri)} /><span>{PRI[t.pri].label}</span>
-        </button>
-        {menu === t.id && <PriMenu t={t} style={{ left: -6, top: 28 }} onPick={p => { actions.setPri(t, p); setMenu(() => null); }} />}
-      </span>
-      <span title={createdTitle(t)} style={{ textAlign: 'right', fontSize: 12.5, fontVariantNumeric: 'tabular-nums', color: tone ? 'var(--warm)' : 'var(--faint)' }}>{t.age === 0 ? 'new' : `${t.age}d`}</span>
-      <span title={t.carried != null && carried ? carryTitle(carried) : undefined} style={{ textAlign: 'right', fontSize: 12.5, fontVariantNumeric: 'tabular-nums', color: carried >= 3 ? 'var(--warm)' : 'var(--faint)' }}>{carried ? `↻ ${carried}` : '—'}</span>
-    </div>
-  );
-}
-
 export const dayLabel = (d: string) => `${fmt(d, { weekday: 'short' })}, ${fmt(d, { month: 'short', day: 'numeric' })}`;
 export const addDays = (d: string, n: number) => { const x = parseIso(d); x.setDate(x.getDate() + n); return iso(x); };

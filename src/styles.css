@@ -62,3 +62,7 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 .note-image:hover .image-open { display: inline-flex; }
 .note-image .image-open:hover { color: var(--text); border-color: var(--accent-ring); }
 .drop-target { outline: 2px dashed var(--accent-ring); outline-offset: 6px; border-radius: 6px; }
+
+/* A block opened from search flashes once. */
+.search-hit { animation: search-hit 1.6s ease-out; border-radius: 6px; }
+@keyframes search-hit { from { background: var(--accent-soft); } to { background: transparent; } }

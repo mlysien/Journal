@@ -72,7 +72,7 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
   const groups: { label: string; rows: Row[] }[] = [
     { label: 'Appearance', rows: [
       { kind: 'seg', label: 'Theme', desc: 'Dark is easier on the eyes at night.', options: [['dark', 'Dark'], ['light', 'Light']], value: prefs.theme, set: k => setPrefs({ theme: k as Prefs['theme'] }) },
-      { kind: 'seg', label: 'Text size', desc: 'Scales text and spacing across the app.', options: [['small', 'Small'], ['default', 'Default'], ['large', 'Large']], value: prefs.textSize, set: k => setPrefs({ textSize: k as Prefs['textSize'] }) },
+      { kind: 'seg', label: 'Text size', desc: 'Scales text and spacing across the app.', options: [['small', 'Small'], ['default', 'Medium'], ['large', 'Large']], value: prefs.textSize, set: k => setPrefs({ textSize: k as Prefs['textSize'] }) },
       { kind: 'seg', label: 'Accent', desc: 'Used for links, focus rings and checked tasks.', options: [['violet', 'Violet'], ['blue', 'Blue']], value: prefs.accent, set: k => setPrefs({ accent: k as Prefs['accent'] }) },
     ] },
     { label: 'Daily notes', rows: [

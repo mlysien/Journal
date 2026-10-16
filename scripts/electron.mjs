@@ -1,5 +1,6 @@
 // Bundles the Electron main and preload scripts into dist-electron/.
 import { build } from 'esbuild';
+import { pathToFileURL } from 'node:url';
 
 export function buildElectron() {
   return Promise.all(['main', 'preload'].map(name => build({
@@ -14,4 +15,4 @@ export function buildElectron() {
   })));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await buildElectron();
+if (import.meta.url === pathToFileURL(process.argv[1]).href) await buildElectron();

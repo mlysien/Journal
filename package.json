@@ -62,7 +62,7 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
+          "target": "msi",
           "arch": [
             "x64"
           ]
@@ -70,11 +70,12 @@
       ],
       "icon": "build/icon.png"
     },
-    "nsis": {
+    "msi": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
       "perMachine": false,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-${version}.${ext}"
     }
   }
 }

@@ -48,7 +48,7 @@ jobs:
           path: |
             release/*.AppImage
             release/*.deb
-            release/*.exe
+            release/*.msi
 
   release:
     needs: build

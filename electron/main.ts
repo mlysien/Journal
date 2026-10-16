@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, protocol, shell } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -183,14 +183,16 @@ ipcMain.on('window:titleBar', (e, colors: { color: string; symbolColor: string }
 /* ---------- window ---------- */
 
 function createWindow() {
+  // Until the app has loaded its theme setting, match the OS so a light setup doesn't flash dark.
+  const dark = nativeTheme.shouldUseDarkColors;
   const win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 900, minHeight: 560,
     title: 'Journal',
-    backgroundColor: '#1d1d1f',
+    backgroundColor: dark ? '#1d1d1f' : '#fcfcfb',
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#18181a', symbolColor: '#8e8e95', height: TITLE_BAR_HEIGHT },
+    titleBarOverlay: dark ? { color: '#18181a', symbolColor: '#8e8e95', height: TITLE_BAR_HEIGHT } : { color: '#f4f4f2', symbolColor: '#6f6f77', height: TITLE_BAR_HEIGHT },
     icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

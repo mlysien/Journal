@@ -1,10 +1,52 @@
 import type { CSSProperties } from 'react';
 
+/** The colours in use. */
 export type Theme = 'dark' | 'light';
-export type Accent = 'violet' | 'blue';
+/** The setting: a theme, or `system` to follow the OS. */
+export type ThemePref = 'system' | Theme;
+export type Accent = 'violet' | 'teal' | 'amber';
 
-export const UI = "'Geist Sans', ui-sans-serif, system-ui, sans-serif";
-export const MONO = "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
+/** Hue of each accent, plus a lightness/chroma tweak so all three read equally strong. */
+const ACCENTS: Record<Accent, { hue: number; dL: number; dC: number }> = {
+  violet: { hue: 285, dL: 0, dC: 0 },
+  teal: { hue: 190, dL: 0, dC: -0.005 },
+  amber: { hue: 70, dL: 0.02, dC: 0.02 },
+};
+export const isAccent = (a: unknown): a is Accent => typeof a === 'string' && a in ACCENTS;
+
+// Windows renders its own hinted fonts much more crisply than web fonts, so it gets Segoe UI and
+// Cascadia (as Obsidian and VS Code do); elsewhere the bundled Geist and JetBrains Mono are used.
+const WIN = typeof window !== 'undefined' && window.journal?.platform === 'win32';
+export const UI = WIN
+  ? "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif"
+  : "'Geist Sans', ui-sans-serif, system-ui, sans-serif";
+export const MONO = WIN
+  ? "'Cascadia Mono', Consolas, 'JetBrains Mono', ui-monospace, monospace"
+  : "'JetBrains Mono', ui-monospace, SFMono-Regular, monospace";
+
+/**
+ * The type scale, in whole pixels (fractional sizes render unevenly on Windows). Modelled on
+ * Obsidian and the Windows 11 type ramp: 13px interface, 16px note text.
+ */
+export const FS = {
+  /** Keyboard hints, file paths, tiny labels. */
+  xs: 11,
+  /** Counts, dates, captions, the status bar. */
+  sm: 12,
+  /** Sidebar, tabs, buttons, menus, secondary text. */
+  ui: 13,
+  /** Settings labels, search results, page subtitles. */
+  md: 14,
+  /** Daily task titles. */
+  lg: 15,
+  /** Note text. */
+  body: 16,
+  h3: 18,
+  h2: 22,
+  h1: 28,
+  /** The title at the top of a note or page. */
+  title: 30,
+} as const;
 
 const THEMES: Record<Theme, Record<string, string>> = {
   dark: {
@@ -31,16 +73,17 @@ const THEMES: Record<Theme, Record<string, string>> = {
   },
 };
 
-function accentVars(theme: Theme, hue: number): Record<string, string> {
-  const d = theme === 'dark', L = d ? 0.76 : 0.52, C = d ? 0.085 : 0.12;
+function accentVars(theme: Theme, accent: Accent): Record<string, string> {
+  const { hue, dL, dC } = ACCENTS[accent];
+  const d = theme === 'dark', L = (d ? 0.76 : 0.52) + dL, C = (d ? 0.085 : 0.12) + dC;
   return {
     '--accent': `oklch(${L} ${C} ${hue})`,
-    '--accent-fill': `oklch(${d ? 0.71 : 0.54} ${C} ${hue})`,
+    '--accent-fill': `oklch(${(d ? 0.71 : 0.54) + dL} ${C} ${hue})`,
     '--accent-soft': `oklch(${L} ${C} ${hue} / ${d ? 0.16 : 0.11})`,
     '--accent-ring': `oklch(${L} ${C} ${hue} / 0.55)`,
   };
 }
 
 export function themeStyle(theme: Theme, accent: Accent): CSSProperties {
-  return { ...THEMES[theme], ...accentVars(theme, accent === 'blue' ? 245 : 285) } as CSSProperties;
+  return { ...THEMES[theme], ...accentVars(theme, accent) } as CSSProperties;
 }

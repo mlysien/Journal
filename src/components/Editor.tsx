@@ -1,17 +1,17 @@
 import { useCallback, useRef, useState, type CSSProperties, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { codeToks, parseBlock, type Block } from '../markdown';
-import { MONO, UI } from '../theme';
+import { FS, MONO, UI } from '../theme';
 import { PRI, splitPriMark } from '../vault';
 import { filesFromClipboard, isImage, mayHoldFiles, saveIncoming, useAssets, vaultUrl, type Incoming } from '../assets';
 import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
 import { AttachmentChip, InlineText } from './InlineText';
 import { Check, ExternalIcon } from './icons';
 
-const P: CSSProperties = { fontSize: 16, lineHeight: 1.72, fontWeight: 400, margin: 0 };
+const P: CSSProperties = { fontSize: FS.body, lineHeight: 1.72, fontWeight: 400, margin: 0 };
 const TYPE: Record<string, CSSProperties> = {
-  h1: { fontSize: 26, fontWeight: 600, lineHeight: 1.3, letterSpacing: '-0.02em', margin: '30px 0 8px' },
-  h2: { fontSize: 19, fontWeight: 600, lineHeight: 1.45, letterSpacing: '-0.012em', margin: '28px 0 6px' },
-  h3: { fontSize: 16.5, fontWeight: 600, lineHeight: 1.5, margin: '22px 0 4px' },
+  h1: { fontSize: FS.h1, fontWeight: 600, lineHeight: 1.3, letterSpacing: '-0.02em', margin: '30px 0 8px' },
+  h2: { fontSize: FS.h2, fontWeight: 600, lineHeight: 1.45, letterSpacing: '-0.012em', margin: '28px 0 6px' },
+  h3: { fontSize: FS.h3, fontWeight: 600, lineHeight: 1.5, margin: '22px 0 4px' },
   quote: { ...P, margin: '8px 0', paddingLeft: 16, borderLeft: '2px solid var(--border-strong)', color: 'var(--text-2)', fontStyle: 'italic' },
 };
 
@@ -161,21 +161,21 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
   const tokens = (text: string) => <InlineText text={text} onOpenLink={onOpenLink} />;
 
   const renderBlock = (src: string, pb: Block, i: number) => {
-    if (onlyEmpty) return <div style={{ fontSize: 16, lineHeight: 1.72, color: 'var(--faint)', cursor: 'text' }}>Start writing. Markdown renders as you type.</div>;
+    if (onlyEmpty) return <div style={{ fontSize: FS.body, lineHeight: 1.72, color: 'var(--faint)', cursor: 'text' }}>Start writing. Markdown renders as you type.</div>;
     if (!live) return <div style={{ ...P, fontFamily: pb.type === 'code' || pb.type === 'table' ? MONO : UI, fontSize: pb.type === 'code' || pb.type === 'table' ? 13.5 : 16, whiteSpace: 'pre-wrap', minHeight: '1.72em', cursor: 'text' }}>{src}</div>;
     switch (pb.type) {
       case 'code': return (
         <div style={{ margin: '14px 0', background: 'var(--code)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', cursor: 'text' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px 0 16px', fontFamily: MONO, fontSize: 11.5, color: 'var(--faint)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px 0 16px', fontFamily: MONO, fontSize: FS.xs, color: 'var(--faint)' }}>
             <span>{pb.lang}</span>
             <button data-link="1" className="hov-text" onClick={e => {
               e.stopPropagation();
               window.journal.copyText(pb.body.join('\n')).catch(() => {});
               setCopied(i);
               setTimeout(() => setCopied(c => (c === i ? null : c)), 1400);
-            }} style={{ border: 'none', background: 'transparent', color: 'var(--faint)', font: 'inherit', fontSize: 11.5, padding: '2px 6px', borderRadius: 4, cursor: 'pointer' }}>{copied === i ? 'Copied' : 'Copy'}</button>
+            }} style={{ border: 'none', background: 'transparent', color: 'var(--faint)', font: 'inherit', fontSize: FS.xs, padding: '2px 6px', borderRadius: 4, cursor: 'pointer' }}>{copied === i ? 'Copied' : 'Copy'}</button>
           </div>
-          <div style={{ padding: '6px 16px 14px', fontFamily: MONO, fontSize: 13.5, lineHeight: 1.65, overflowX: 'auto', color: 'var(--text-2)' }}>
+          <div style={{ padding: '6px 16px 14px', fontFamily: MONO, fontSize: FS.ui, lineHeight: 1.65, overflowX: 'auto', color: 'var(--text-2)' }}>
             {pb.body.map((ln, j) => (
               <div key={j} style={{ whiteSpace: 'pre', minHeight: '1.65em' }}>{codeToks(ln, pb.lang).map(ct => <span key={ct.key} style={ct.style}>{ct.text}</span>)}</div>
             ))}
@@ -186,7 +186,7 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
         const n = Math.max(...pb.rows.map(r => r.length));
         const numeric = Array.from({ length: n }, (_, c) => pb.rows.slice(1).every(r => /^[\d.,\s]+(s|ms|%)?$/.test(r[c] || '')));
         return (
-          <div style={{ margin: '14px 0', fontSize: 14.5, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums', cursor: 'text' }}>
+          <div style={{ margin: '14px 0', fontSize: FS.md, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums', cursor: 'text' }}>
             {pb.rows.map((r, ri) => (
               <div key={ri} style={{ display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, borderBottom: '1px solid var(--border)' }}>
                 {Array.from({ length: n }, (_, c) => (
@@ -211,8 +211,8 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
         if (rel) return <div style={{ ...P, cursor: 'text' }}><AttachmentChip label={pb.name.split('/').pop()!} target={pb.src ?? pb.name} wiki={!pb.src} /></div>;
         return (
           <div style={{ margin: '12px 0', padding: '18px 20px', border: '1px dashed var(--border-strong)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 6, cursor: 'text' }}>
-            <span style={{ fontFamily: MONO, fontSize: 12.5, color: 'var(--muted)' }}>{pb.src ?? pb.name}</span>
-            <span style={{ fontSize: 13, color: 'var(--faint)' }}>This file isn’t in the vault.</span>
+            <span style={{ fontFamily: MONO, fontSize: FS.sm, color: 'var(--muted)' }}>{pb.src ?? pb.name}</span>
+            <span style={{ fontSize: FS.ui, color: 'var(--faint)' }}>This file isn’t in the vault.</span>
           </div>
         );
       }
@@ -253,8 +253,8 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
           const multi = pb.type === 'code' || pb.type === 'table';
           const T = TYPE[pb.type] || P;
           const style: CSSProperties = { display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontFamily: UI, padding: 0, overflow: 'hidden', caretColor: 'var(--accent)', fontSize: T.fontSize, lineHeight: T.lineHeight, fontWeight: T.fontWeight || 400, letterSpacing: T.letterSpacing || 'normal', margin: T.margin };
-          if (multi) Object.assign(style, { fontFamily: MONO, fontSize: 13.5, lineHeight: 1.65, fontWeight: 400, margin: '14px 0', padding: '12px 16px', background: 'var(--code)', border: '1px solid var(--accent-ring)', borderRadius: 8, color: 'var(--text-2)' });
-          if (pb.type === 'image') Object.assign(style, { fontFamily: MONO, fontSize: 14, margin: '16px 0' });
+          if (multi) Object.assign(style, { fontFamily: MONO, fontSize: FS.ui, lineHeight: 1.65, fontWeight: 400, margin: '14px 0', padding: '12px 16px', background: 'var(--code)', border: '1px solid var(--accent-ring)', borderRadius: 8, color: 'var(--text-2)' });
+          if (pb.type === 'image') Object.assign(style, { fontFamily: MONO, fontSize: FS.ui, margin: '16px 0' });
           body = (
             <textarea
               ref={taRef} value={src} rows={1} spellCheck={spell} style={style}

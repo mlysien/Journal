@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { daysBetween, todayIso } from './dates';
 import { splitBlocks } from './markdown';
-import type { Accent, Theme } from './theme';
+import { isAccent, type Accent, type ThemePref } from './theme';
 import type { VaultSnapshot } from '../electron/api';
 import { dailyDateOf, dailyPath, DEFAULT_DAILY, formatProblem, isDailyDir, LEGACY_DAILY, normalizeFolder, type DailyLocation } from './dailyFormat';
 import { dailyFileText, parseDailyFile, taskDay } from './dailyTasks';
@@ -38,17 +38,19 @@ export interface Note {
   blocks: string[];
 }
 
-export type TextSize = 'small' | 'default' | 'large';
+export type TextSize = 'small' | 'medium' | 'large';
 export type LineWidth = 'narrow' | 'default' | 'wide' | 'full';
 
-export const TEXT_ZOOM: Record<TextSize, number> = { small: 1, default: 1.1, large: 1.2 };
+/** Steps that keep the 13px interface text on whole pixels: 12, 13 and 15px. */
+export const TEXT_ZOOM: Record<TextSize, number> = { small: 12 / 13, medium: 1, large: 15 / 13 };
 /** Max width of a note's page, including its 56px side padding. */
 export const LINE_WIDTH: Record<LineWidth, number | 'none'> = { narrow: 640, default: 720, wide: 900, full: 'none' };
 
 export interface Prefs {
-  theme: Theme;
+  theme: ThemePref;
   accent: Accent;
-  textSize: TextSize;
+  /** Named `textScale` since the type scale changed; an older `textSize` value is dropped. */
+  textScale: TextSize;
   lineWidth: LineWidth;
   /** Where daily notes live and how their files are named. */
   daily: DailyLocation;
@@ -75,6 +77,8 @@ export interface Vault {
   prefs: Prefs;
 }
 
+export const SIDEBAR_WIDTH = 256, SIDEBAR_MIN = 180, SIDEBAR_MAX = 560;
+
 export type TabId = string; // 'daily:YYYY-MM-DD' | 'note:<id>' | 'settings'
 
 export interface UiState {
@@ -83,6 +87,8 @@ export interface UiState {
   sideTab: 'files' | 'daily';
   open: Record<string, boolean>;
   sidebarHidden: boolean;
+  /** Sidebar width in px at the default text size; dragged by its right edge. */
+  sidebarWidth: number;
 }
 
 /** What `.journal/state.json` holds: settings and UI state. Daily tasks live in the daily notes. */
@@ -97,7 +103,7 @@ interface StateFile {
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-const DEFAULT_PREFS: Prefs = { theme: 'dark', accent: 'violet', textSize: 'small', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true, meta: true, live: true, spell: false };
+const DEFAULT_PREFS: Prefs = { theme: 'system', accent: 'violet', textScale: 'medium', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true, meta: true, live: true, spell: false };
 
 const defaultUi = (today: string): UiState => ({
   tabs: [`daily:${today}`],
@@ -105,6 +111,7 @@ const defaultUi = (today: string): UiState => ({
   sideTab: 'files',
   open: { [`m:${today.slice(0, 7)}`]: true, 'f:Projects': true },
   sidebarHidden: false,
+  sidebarWidth: SIDEBAR_WIDTH,
 });
 
 /* ---------- file paths ---------- */
@@ -216,7 +223,12 @@ export function fromSnapshot(snap: VaultSnapshot, today: string): Loaded {
   const obsidian = !state && snap.obsidianDaily
     ? { folder: normalizeFolder(snap.obsidianDaily.folder ?? ''), format: snap.obsidianDaily.format?.trim() || 'YYYY-MM-DD' }
     : null;
-  const prefs: Prefs = { ...DEFAULT_PREFS, ...state?.prefs, ...(obsidian && !formatProblem(obsidian.format) ? { daily: obsidian } : {}) };
+  const saved: Partial<Prefs> & { textSize?: unknown } = { ...state?.prefs };
+  delete saved.textSize;
+  // Values from earlier versions: the Blue accent and the Default text size.
+  if (!isAccent(saved.accent)) delete saved.accent;
+  if ((saved.textScale as string) === 'default') saved.textScale = 'medium';
+  const prefs: Prefs = { ...DEFAULT_PREFS, ...saved, ...(obsidian && !formatProblem(obsidian.format) ? { daily: obsidian } : {}) };
   const notes: Record<string, Note> = {}, daily: Record<string, string[]> = {}, tasks: DailyTask[] = [];
   for (const [path, content] of Object.entries(snap.files)) {
     // Files in the old Journal/YYYY-MM/YYYY-MM-DD.md layout are daily notes too; saving moves them.

@@ -1,8 +1,8 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { fmt, isoWeek, daysBetween } from '../dates';
-import { MONO } from '../theme';
+import { FS, MONO } from '../theme';
 import { wordsOf } from '../markdown';
-import type { Note, TabId, UiState, Vault } from '../vault';
+import { SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_WIDTH, type Note, type TabId, type UiState, type Vault } from '../vault';
 import { SearchIcon, CalendarIcon, ChevronRight, CollapseAllIcon, DayIcon, ExpandAllIcon, FileIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GearIcon, JournalIcon, NotePlusIcon } from './icons';
 import { addDays, dayLabel } from './Tasks';
 import { formatDate } from '../dailyFormat';
@@ -12,6 +12,8 @@ interface Props {
   ui: UiState;
   setUi: (fn: (u: UiState) => UiState) => void;
   today: string;
+  /** The text size zoom the sidebar is drawn at, to turn mouse movement into its width. */
+  zoom: number;
   dates: string[];
   todayOpen: number;
   open: (id: TabId) => void;
@@ -29,9 +31,9 @@ type Row =
 
 interface FolderNode { path: string; name: string; folders: FolderNode[]; notes: Note[] }
 
-const linkStyle = (act: boolean): CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 10, height: 32, padding: '0 10px', borderRadius: 6, fontSize: 14.5, color: act ? 'var(--text)' : 'var(--text-2)', background: act ? 'var(--active)' : 'transparent', cursor: 'default' });
-const segStyle = (on: boolean): CSSProperties => ({ flex: 1, border: 'none', fontFamily: 'inherit', fontSize: 13, padding: '4px 0', borderRadius: 5, cursor: 'pointer', background: on ? 'var(--bg)' : 'transparent', color: on ? 'var(--text)' : 'var(--muted)', boxShadow: on ? '0 0 0 1px var(--border)' : 'none' });
-const rowStyle = (depth: number, folder: boolean, act: boolean): CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 4, height: 30, paddingLeft: 10 + depth * 16 + (folder ? 0 : 16), paddingRight: 10, borderRadius: 6, fontSize: 14.5, color: act ? 'var(--text)' : folder ? 'var(--text-2)' : 'var(--muted)', background: act ? 'var(--active)' : 'transparent', cursor: 'default', fontWeight: folder ? 500 : 400 });
+const linkStyle = (act: boolean): CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 10, height: 32, padding: '0 10px', borderRadius: 6, fontSize: FS.ui, color: act ? 'var(--text)' : 'var(--text-2)', background: act ? 'var(--active)' : 'transparent', cursor: 'default' });
+const segStyle = (on: boolean): CSSProperties => ({ flex: 1, border: 'none', fontFamily: 'inherit', fontSize: FS.ui, padding: '4px 0', borderRadius: 5, cursor: 'pointer', background: on ? 'var(--bg)' : 'transparent', color: on ? 'var(--text)' : 'var(--muted)', boxShadow: on ? '0 0 0 1px var(--border)' : 'none' });
+const rowStyle = (depth: number, folder: boolean, act: boolean): CSSProperties => ({ display: 'flex', alignItems: 'center', gap: 4, height: 30, paddingLeft: 10 + depth * 16 + (folder ? 0 : 16), paddingRight: 10, borderRadius: 6, fontSize: FS.ui, color: act ? 'var(--text)' : folder ? 'var(--text-2)' : 'var(--muted)', background: act ? 'var(--active)' : 'transparent', cursor: 'default', fontWeight: folder ? 500 : 400 });
 const smallBtn: CSSProperties = { width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--faint)', borderRadius: 5, padding: 0, cursor: 'pointer', flex: 'none' };
 /** Icon slot in a sidebar row; keeps labels aligned whatever the icon. */
 const RowIcon = ({ children, act }: { children: ReactNode; act?: boolean }) => (
@@ -42,7 +44,7 @@ const byTitle = (a: Note, b: Note) => (a.title || 'Untitled').localeCompare(b.ti
 function NavLink({ act, onClick, icon, label, meta, metaStyle }: { act: boolean; onClick: () => void; icon: ReactNode; label: string; meta: string; metaStyle?: CSSProperties }) {
   return (
     <div onClick={onClick} className="hov-bg" style={linkStyle(act)}>
-      <span style={{ display: 'flex', color: act ? 'var(--text)' : 'var(--muted)' }}>{icon}</span><span style={{ flex: 1 }}>{label}</span><span style={{ fontSize: 12.5, color: 'var(--faint)', ...metaStyle }}>{meta}</span>
+      <span style={{ display: 'flex', color: act ? 'var(--text)' : 'var(--muted)' }}>{icon}</span><span style={{ flex: 1 }}>{label}</span><span style={{ fontSize: FS.sm, color: 'var(--faint)', ...metaStyle }}>{meta}</span>
     </div>
   );
 }
@@ -83,7 +85,7 @@ function buildTree(vault: Vault): FolderNode {
 
 const countNotes = (n: FolderNode): number => n.notes.length + n.folders.reduce((a, f) => a + countNotes(f), 0);
 
-export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSearch, onNewNote, onNewFolder }: Props) {
+export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open, onSearch, onNewNote, onNewFolder }: Props) {
   const active = ui.active;
   const [draft, setDraft] = useState<{ parent: string | null; name: string; error: string | null } | null>(null);
   const loc = vault.prefs.daily;
@@ -174,7 +176,7 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSea
   };
 
   return (
-    <aside style={{ width: 256, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--side)', borderRight: '1px solid var(--border)', minHeight: 0 }}>
+    <aside style={{ width: ui.sidebarWidth, flex: 'none', position: 'relative', display: 'flex', flexDirection: 'column', background: 'var(--side)', borderRight: '1px solid var(--border)', minHeight: 0 }}>
       <div style={{ padding: '8px 8px 4px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <NavLink act={active === 'daily:' + today} onClick={() => open('daily:' + today)} icon={<CalendarIcon />} label="Today" meta={fmt(today, { month: 'short', day: 'numeric' })} />
         <NavLink act={false} onClick={onSearch} icon={<SearchIcon />} label="Search" meta={window.journal.platform === 'darwin' ? '⌘K' : 'Ctrl K'} />
@@ -195,7 +197,7 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSea
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 12px' }}>
         {rows.map(r => {
-          if (r.kind === 'header') return <div key={r.key} style={{ padding: '14px 10px 6px', fontSize: 12.5, fontWeight: 500, color: 'var(--faint)', letterSpacing: '0.02em' }}>{r.label}</div>;
+          if (r.kind === 'header') return <div key={r.key} style={{ padding: '14px 10px 6px', fontSize: FS.sm, fontWeight: 500, color: 'var(--faint)', letterSpacing: '0.02em' }}>{r.label}</div>;
           if (r.kind === 'draft') return (
             <div key={r.key}>
               <div style={{ ...rowStyle(r.depth, true, false), paddingRight: 6 }}>
@@ -207,7 +209,7 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSea
                   onBlur={commitDraft}
                   style={{ flex: 1, minWidth: 0, font: 'inherit', fontWeight: 500, color: 'var(--text)', background: 'var(--elev)', border: `1px solid ${draft!.error ? 'var(--pri-h)' : 'var(--accent-ring)'}`, borderRadius: 5, padding: '2px 6px', outline: 'none' }} />
               </div>
-              {draft!.error && <div style={{ padding: `2px 10px 4px ${10 + r.depth * 16 + 42}px`, fontSize: 12.5, color: 'var(--pri-h)' }}>{draft!.error}</div>}
+              {draft!.error && <div style={{ padding: `2px 10px 4px ${10 + r.depth * 16 + 42}px`, fontSize: FS.sm, color: 'var(--pri-h)' }}>{draft!.error}</div>}
             </div>
           );
           if (r.kind === 'folder') {
@@ -216,9 +218,9 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSea
               <div key={r.key} onClick={() => setOpen(r.key, !o)} className="hov-bg side-row" style={{ ...rowStyle(r.depth, true, false), paddingRight: path ? 4 : 10 }}>
                 <span style={{ display: 'flex', width: 16, justifyContent: 'center', color: 'var(--faint)', transform: o ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}><ChevronRight /></span>
                 <RowIcon>{r.journal ? <JournalIcon /> : o ? <FolderOpenIcon /> : <FolderIcon />}</RowIcon>
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+                <span title={r.label} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
                 {path && !r.journal && <CreateButtons className="side-actions" onNote={() => newNoteIn(path)} onFolder={() => startFolder(path)} />}
-                <span className="side-meta" style={{ fontSize: 12.5, color: 'var(--faint)', fontVariantNumeric: 'tabular-nums' }}>{o ? '' : r.count}</span>
+                <span className="side-meta" style={{ fontSize: FS.sm, color: 'var(--faint)', fontVariantNumeric: 'tabular-nums' }}>{o ? '' : r.count}</span>
               </div>
             );
           }
@@ -226,14 +228,37 @@ export function Sidebar({ vault, ui, setUi, today, dates, todayOpen, open, onSea
           return (
             <div key={r.key} onClick={() => open(r.tab)} className="hov-bg" style={style}>
               <RowIcon act={r.tab === active}>{r.day ? <DayIcon /> : <FileIcon />}</RowIcon>
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
-              <span style={{ fontSize: 12.5, color: 'var(--faint)', fontVariantNumeric: 'tabular-nums' }}>{r.meta}</span>
+              <span title={r.label} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+              <span style={{ fontSize: FS.sm, color: 'var(--faint)', fontVariantNumeric: 'tabular-nums' }}>{r.meta}</span>
             </div>
           );
         })}
       </div>
+      <div className="side-resize" title="Drag to resize, double-click to reset"
+        onDoubleClick={() => setUi(u => ({ ...u, sidebarWidth: SIDEBAR_WIDTH }))}
+        onPointerDown={e => {
+          e.preventDefault();
+          // Listening on the window keeps the drag going when the pointer runs ahead of the edge.
+          const el = e.currentTarget, x0 = e.clientX, w0 = ui.sidebarWidth;
+          el.classList.add('dragging');
+          document.body.style.cursor = 'col-resize';
+          const move = (m: PointerEvent) => {
+            const w = Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w0 + (m.clientX - x0) / zoom)));
+            setUi(u => (u.sidebarWidth === w ? u : { ...u, sidebarWidth: w }));
+          };
+          const up = () => {
+            el.classList.remove('dragging');
+            document.body.style.cursor = '';
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', up);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+          window.addEventListener('pointercancel', up);
+        }} />
       <div style={{ borderTop: '1px solid var(--border)', padding: 8 }}>
-        <NavLink act={active === 'settings'} onClick={() => open('settings')} icon={<GearIcon />} label="Settings" meta={vault.root.split(/[\\/]/).pop() ?? ''} metaStyle={{ fontFamily: MONO, fontSize: 11 }} />
+        <NavLink act={active === 'settings'} onClick={() => open('settings')} icon={<GearIcon />} label="Settings" meta={vault.root.split(/[\\/]/).pop() ?? ''} metaStyle={{ fontFamily: MONO, fontSize: FS.xs }} />
       </div>
     </aside>
   );

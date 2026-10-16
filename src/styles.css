@@ -26,7 +26,7 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 .tab-close:hover { background: var(--active) !important; color: var(--text) !important; }
 
 .boot { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; font: 14px 'Geist Sans', ui-sans-serif, system-ui, sans-serif; color: #b6b6bb; }
-.boot small { color: #727279; font-size: 12.5px; }
+.boot small { color: #727279; font-size: 12px; }
 
 /* The title bar drags the window; anything clickable inside it opts out. */
 .titlebar { -webkit-app-region: drag; user-select: none; }
@@ -58,7 +58,7 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 /* Images in notes; the open button shows on hover. */
 .note-image { position: relative; display: inline-block; max-width: 100%; margin: 12px 0; }
 .note-image img { display: block; max-width: 100%; max-height: 520px; border-radius: 8px; border: 1px solid var(--border); background: var(--code); }
-.note-image .image-open { position: absolute; top: 8px; right: 8px; display: none; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--elev); color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.note-image .image-open { position: absolute; top: 8px; right: 8px; display: none; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--elev); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
 .note-image:hover .image-open { display: inline-flex; }
 .note-image .image-open:hover { color: var(--text); border-color: var(--accent-ring); }
 .drop-target { outline: 2px dashed var(--accent-ring); outline-offset: 6px; border-radius: 6px; }
@@ -66,3 +66,8 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 /* A block opened from search flashes once. */
 .search-hit { animation: search-hit 1.6s ease-out; border-radius: 6px; }
 @keyframes search-hit { from { background: var(--accent-soft); } to { background: transparent; } }
+
+/* The sidebar's right edge: a wide invisible grab area with a thin line on hover. */
+.side-resize { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 5; touch-action: none; }
+.side-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .12s; }
+.side-resize:hover::after, .side-resize.dragging::after { background: var(--accent); }

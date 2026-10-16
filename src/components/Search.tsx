@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { FS } from '../theme';
 import { fmt } from '../dates';
 import { dailyFile, type TabId, type Vault } from '../vault';
 import { taskDay } from '../dailyTasks';
@@ -121,10 +122,10 @@ export function Search({ vault, onOpen, onClose }: Props) {
             else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
             else if (e.key === 'Enter') { e.preventDefault(); open(sel); }
           }}
-          style={{ font: 'inherit', fontSize: 16, padding: '16px 18px', border: 'none', borderBottom: '1px solid var(--border)', outline: 'none', background: 'transparent', color: 'var(--text)' }} />
+          style={{ font: 'inherit', fontSize: FS.body, padding: '16px 18px', border: 'none', borderBottom: '1px solid var(--border)', outline: 'none', background: 'transparent', color: 'var(--text)' }} />
         <div ref={list} style={{ overflowY: 'auto', padding: 6 }}>
-          {!terms.length && <div style={{ padding: '14px 12px', fontSize: 13.5, color: 'var(--muted)' }}>Type to search every note in the vault. ↑ ↓ to move, Enter to open, Esc to close.</div>}
-          {terms.length > 0 && !hits.length && <div style={{ padding: '14px 12px', fontSize: 13.5, color: 'var(--muted)' }}>Nothing matches “{query.trim()}”.</div>}
+          {!terms.length && <div style={{ padding: '14px 12px', fontSize: FS.ui, color: 'var(--muted)' }}>Type to search every note in the vault. ↑ ↓ to move, Enter to open, Esc to close.</div>}
+          {terms.length > 0 && !hits.length && <div style={{ padding: '14px 12px', fontSize: FS.ui, color: 'var(--muted)' }}>Nothing matches “{query.trim()}”.</div>}
           {hits.map(h => {
             const first = n;
             const lineRows = h.lines.map(l => ({ l, i: n++ }));
@@ -135,12 +136,12 @@ export function Search({ vault, onOpen, onClose }: Props) {
                 <div data-row={h.lines.length ? undefined : first} onClick={() => open(first)} onMouseMove={() => { if (!h.lines.length) setSel(first); }} className="hov-bg"
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 7, cursor: 'pointer', background: docSel ? 'var(--active)' : undefined }}>
                   <span style={{ display: 'flex', color: 'var(--muted)' }}>{h.doc.day ? <DayIcon /> : <FileIcon />}</span>
-                  <span style={{ fontSize: 14.5, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><Marked text={h.doc.title} terms={h.titleHit ? terms : []} /></span>
-                  {h.doc.sub && <span style={{ fontSize: 12.5, color: 'var(--faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{h.doc.sub}</span>}
+                  <span style={{ fontSize: FS.md, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><Marked text={h.doc.title} terms={h.titleHit ? terms : []} /></span>
+                  {h.doc.sub && <span style={{ fontSize: FS.sm, color: 'var(--faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{h.doc.sub}</span>}
                 </div>
                 {lineRows.map(({ l, i }) => (
                   <div key={i} data-row={i} onClick={() => open(i)} onMouseMove={() => setSel(i)} className="hov-bg"
-                    style={{ padding: '4px 10px 4px 34px', borderRadius: 7, fontSize: 13.5, lineHeight: 1.5, color: 'var(--text-2)', cursor: 'pointer', background: sel === i ? 'var(--active)' : undefined, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    style={{ padding: '4px 10px 4px 34px', borderRadius: 7, fontSize: FS.ui, lineHeight: 1.5, color: 'var(--text-2)', cursor: 'pointer', background: sel === i ? 'var(--active)' : undefined, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {l.block === null && <span style={{ color: 'var(--faint)', marginRight: 6 }}>Task</span>}
                     <Marked text={plain(l.text) || l.text} terms={terms} cut />
                   </div>

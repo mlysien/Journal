@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { MONO } from '../theme';
+import { FS, MONO } from '../theme';
 import type { Prefs } from '../vault';
 import { dailyPath, formatProblem, normalizeFolder } from '../dailyFormat';
 
@@ -9,7 +9,7 @@ type Row =
   | { kind: 'path'; label: string; desc: string; value: string; actions?: [string, () => void][] }
   | { kind: 'daily'; label: string; desc: string };
 
-const segBtn = (on: boolean): CSSProperties => ({ border: 'none', fontFamily: 'inherit', fontSize: 12.5, padding: '4px 12px', borderRadius: 5, cursor: 'pointer', background: on ? 'var(--bg)' : 'transparent', color: on ? 'var(--text)' : 'var(--muted)', boxShadow: on ? '0 0 0 1px var(--border)' : 'none' });
+const segBtn = (on: boolean): CSSProperties => ({ border: 'none', fontFamily: 'inherit', fontSize: FS.sm, padding: '4px 12px', borderRadius: 5, cursor: 'pointer', background: on ? 'var(--bg)' : 'transparent', color: on ? 'var(--text)' : 'var(--muted)', boxShadow: on ? '0 0 0 1px var(--border)' : 'none' });
 
 interface Props {
   prefs: Prefs;
@@ -22,7 +22,7 @@ interface Props {
   onChangeVault: () => void;
 }
 
-const field: CSSProperties = { width: '100%', boxSizing: 'border-box', fontFamily: MONO, fontSize: 13, color: 'var(--text)', background: 'var(--elev)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '6px 10px', outline: 'none' };
+const field: CSSProperties = { width: '100%', boxSizing: 'border-box', fontFamily: MONO, fontSize: FS.ui, color: 'var(--text)', background: 'var(--elev)', border: '1px solid var(--border-strong)', borderRadius: 6, padding: '6px 10px', outline: 'none' };
 
 /** Folder and file name format for daily notes, applied with a button because it moves files. */
 function DailyLocationEditor({ prefs, today, onApply }: { prefs: Prefs; today: string; onApply: Props['onDailyLocation'] }) {
@@ -39,7 +39,7 @@ function DailyLocationEditor({ prefs, today, onApply }: { prefs: Prefs; today: s
     setError(e);
     setDone(!e);
   };
-  const label = (text: string) => <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{text}</span>;
+  const label = (text: string) => <span style={{ fontSize: FS.sm, color: 'var(--muted)' }}>{text}</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 12 }}>
@@ -53,15 +53,15 @@ function DailyLocationEditor({ prefs, today, onApply }: { prefs: Prefs; today: s
         </label>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-        <span style={{ fontSize: 13, color: problem || error ? 'var(--pri-h)' : 'var(--muted)', minWidth: 0 }}>
-          {problem ?? error ?? <>Today: <span style={{ fontFamily: MONO, fontSize: 12.5, color: 'var(--text-2)' }}>{dailyPath({ folder: normalizeFolder(folder), format: format.trim() }, today)}</span>{done && ' · moved'}</>}
+        <span style={{ fontSize: FS.ui, color: problem || error ? 'var(--pri-h)' : 'var(--muted)', minWidth: 0 }}>
+          {problem ?? error ?? <>Today: <span style={{ fontFamily: MONO, fontSize: FS.sm, color: 'var(--text-2)' }}>{dailyPath({ folder: normalizeFolder(folder), format: format.trim() }, today)}</span>{done && ' · moved'}</>}
         </span>
         <button onClick={apply} disabled={!changed || !!problem} className="btn-outline"
-          style={{ flex: 'none', border: '1px solid var(--border-strong)', background: 'var(--elev)', color: 'var(--text)', font: 'inherit', fontSize: 13, padding: '5px 12px', borderRadius: 7, cursor: changed && !problem ? 'pointer' : 'default', opacity: changed && !problem ? 1 : 0.45 }}>
+          style={{ flex: 'none', border: '1px solid var(--border-strong)', background: 'var(--elev)', color: 'var(--text)', font: 'inherit', fontSize: FS.ui, padding: '5px 12px', borderRadius: 7, cursor: changed && !problem ? 'pointer' : 'default', opacity: changed && !problem ? 1 : 0.45 }}>
           Apply and move notes
         </button>
       </div>
-      <span style={{ fontSize: 12.5, color: 'var(--faint)', lineHeight: 1.5 }}>
+      <span style={{ fontSize: FS.sm, color: 'var(--faint)', lineHeight: 1.5 }}>
         Same tokens as Obsidian: YYYY, YY, MMMM, MMM, MM, M, DD, D, Do, dddd, ddd, and [text] for literal text. A / in the format makes subfolders.
       </span>
     </div>
@@ -71,9 +71,9 @@ function DailyLocationEditor({ prefs, today, onApply }: { prefs: Prefs; today: s
 export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, onReveal, onChangeVault }: Props) {
   const groups: { label: string; rows: Row[] }[] = [
     { label: 'Appearance', rows: [
-      { kind: 'seg', label: 'Theme', desc: 'Dark is easier on the eyes at night.', options: [['dark', 'Dark'], ['light', 'Light']], value: prefs.theme, set: k => setPrefs({ theme: k as Prefs['theme'] }) },
-      { kind: 'seg', label: 'Text size', desc: 'Scales text and spacing across the app.', options: [['small', 'Small'], ['default', 'Medium'], ['large', 'Large']], value: prefs.textSize, set: k => setPrefs({ textSize: k as Prefs['textSize'] }) },
-      { kind: 'seg', label: 'Accent', desc: 'Used for links, focus rings and checked tasks.', options: [['violet', 'Violet'], ['blue', 'Blue']], value: prefs.accent, set: k => setPrefs({ accent: k as Prefs['accent'] }) },
+      { kind: 'seg', label: 'Theme', desc: 'System follows your computer’s light or dark mode.', options: [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']], value: prefs.theme, set: k => setPrefs({ theme: k as Prefs['theme'] }) },
+      { kind: 'seg', label: 'Text size', desc: 'Scales text and spacing across the app.', options: [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], value: prefs.textScale, set: k => setPrefs({ textScale: k as Prefs['textScale'] }) },
+      { kind: 'seg', label: 'Accent', desc: 'Used for links, focus rings and checked tasks.', options: [['violet', 'Violet'], ['teal', 'Teal'], ['amber', 'Amber']], value: prefs.accent, set: k => setPrefs({ accent: k as Prefs['accent'] }) },
     ] },
     { label: 'Daily notes', rows: [
       { kind: 'toggle', key: 'carry', label: 'Carry over unfinished tasks', desc: 'Open tasks move into the next day’s note when it is created.' },
@@ -92,17 +92,17 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 56px 120px' }}>
-      <div style={{ fontSize: 12.5, color: 'var(--faint)', height: 28, display: 'flex', alignItems: 'center' }}>Settings</div>
-      <h1 style={{ margin: '22px 0 6px', fontSize: 34, fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.2 }}>Settings</h1>
-      <div style={{ fontSize: 14, color: 'var(--muted)' }}>Stored in .journal/state.json inside your vault</div>
+      <div style={{ fontSize: FS.sm, color: 'var(--faint)', height: 28, display: 'flex', alignItems: 'center' }}>Settings</div>
+      <h1 style={{ margin: '22px 0 6px', fontSize: FS.title, fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.2 }}>Settings</h1>
+      <div style={{ fontSize: FS.md, color: 'var(--muted)' }}>Stored in .journal/state.json inside your vault</div>
       {groups.map(g => (
         <div key={g.label} style={{ marginTop: 40 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>{g.label}</div>
+          <div style={{ fontSize: FS.ui, fontWeight: 600, color: 'var(--text)', paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>{g.label}</div>
           {g.rows.map(r => (
             <div key={r.label} style={{ display: 'flex', flexDirection: r.kind === 'daily' ? 'column' : 'row', alignItems: r.kind === 'daily' ? 'stretch' : 'center', justifyContent: 'space-between', gap: r.kind === 'daily' ? 8 : 24, padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                <span style={{ fontSize: 14.5, color: 'var(--text)' }}>{r.label}</span>
-                <span style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>{r.desc}</span>
+                <span style={{ fontSize: FS.md, color: 'var(--text)' }}>{r.label}</span>
+                <span style={{ fontSize: FS.ui, color: 'var(--muted)', lineHeight: 1.5 }}>{r.desc}</span>
               </div>
               {r.kind === 'daily' && <DailyLocationEditor prefs={prefs} today={today} onApply={onDailyLocation} />}
               {r.kind === 'seg' && (
@@ -121,10 +121,10 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
               })()}
               {r.kind === 'path' && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, minWidth: 0 }}>
-                  <span title={r.value} style={{ fontFamily: MONO, fontSize: 12.5, color: 'var(--text-2)', padding: '5px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.value}</span>
+                  <span title={r.value} style={{ fontFamily: MONO, fontSize: FS.sm, color: 'var(--text-2)', padding: '5px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.value}</span>
                   {r.actions && (
                     <div style={{ display: 'flex', gap: 4 }}>
-                      {r.actions.map(([label, fn]) => <button key={label} onClick={fn} className="hov-text-active" style={{ border: 'none', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: 12.5, padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}>{label}</button>)}
+                      {r.actions.map(([label, fn]) => <button key={label} onClick={fn} className="hov-text-active" style={{ border: 'none', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: FS.sm, padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}>{label}</button>)}
                     </div>
                   )}
                 </div>

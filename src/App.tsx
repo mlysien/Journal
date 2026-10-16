@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmt, isIsoDate, isoWeek } from './dates';
 import { wordsOf } from './markdown';
-import { themeStyle, UI } from './theme';
+import { FS, MONO, themeStyle, UI, type Theme, type ThemePref } from './theme';
 import { dailyName, dateFromName } from './dailyFormat';
 import { AssetContext, makeAssets } from './assets';
 import {
@@ -17,7 +17,19 @@ import { ChevronLeft, ChevronRight, Close, Plus, SidebarIcon } from './component
 
 const iconBtn = { width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--muted)', borderRadius: 6, cursor: 'pointer', padding: 0 } as const;
 const navBtn = (disabled: boolean) => ({ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--muted)', borderRadius: 6, cursor: disabled ? 'default' : 'pointer', padding: 0, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? 'none' : 'auto' } as const);
-const H1 = { margin: '22px 0 6px', fontSize: 34, fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.2, color: 'var(--text)' } as const;
+const H1 = { margin: '22px 0 6px', fontSize: FS.title, fontWeight: 600, letterSpacing: '-0.025em', lineHeight: 1.2, color: 'var(--text)' } as const;
+
+/** The theme to show: the chosen one, or the OS's light/dark mode for `system`, kept up to date. */
+function useResolvedTheme(pref: ThemePref): Theme {
+  const query = '(prefers-color-scheme: dark)';
+  const [osDark, setOsDark] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query), on = () => setOsDark(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return pref === 'system' ? (osDark ? 'dark' : 'light') : pref;
+}
 
 const TITLE_BAR = {
   dark: { color: '#18181a', symbolColor: '#8e8e95' },
@@ -67,7 +79,8 @@ export function App({ initial }: { initial: Loaded }) {
     });
     return () => cancelAnimationFrame(id);
   }, [jump, active]);
-  useEffect(() => { window.journal.setTitleBar(TITLE_BAR[prefs.theme]); }, [prefs.theme]);
+  const theme = useResolvedTheme(prefs.theme);
+  useEffect(() => { window.journal.setTitleBar(TITLE_BAR[theme]); }, [theme]);
   useEffect(() => {
     if (justCreated?.focus === 'title' && active === 'note:' + justCreated.id) { titleInput.current?.focus(); titleInput.current?.select(); }
   }, [justCreated, active]);
@@ -160,13 +173,13 @@ export function App({ initial }: { initial: Loaded }) {
   const todayTasks = tasksOn(today);
 
   return (
-    <div style={{ height: '100%', ...themeStyle(prefs.theme, prefs.accent) }}>
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)', fontFamily: UI, fontSize: 14, WebkitFontSmoothing: 'antialiased', overflow: 'hidden' }}>
+    <div style={{ height: '100%', ...themeStyle(theme, prefs.accent) }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)', fontFamily: UI, fontSize: FS.ui, WebkitFontSmoothing: 'antialiased', overflow: 'hidden' }}>
 
         {/* title bar + tabs */}
         <div className="titlebar" style={{ height: 42, flex: 'none', display: 'flex', alignItems: 'center', background: 'var(--side)' }}>
-          <div style={{ width: ui.sidebarHidden ? 'auto' : 256 * TEXT_ZOOM[prefs.textSize], flex: 'none', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0 10px 0 16px' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '-0.01em' }}>Journal</span>
+          <div style={{ width: ui.sidebarHidden ? 'auto' : ui.sidebarWidth * TEXT_ZOOM[prefs.textScale], flex: 'none', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0 10px 0 16px' }}>
+            <span style={{ fontSize: FS.ui, fontWeight: 600, color: 'var(--text-2)', letterSpacing: '-0.01em' }}>Journal</span>
             <button onClick={() => setUi(u => ({ ...u, sidebarHidden: !u.sidebarHidden }))} title="Toggle sidebar" className="hov-text-active" style={iconBtn}><SidebarIcon /></button>
           </div>
           <div style={{ flex: 1, minWidth: 0, alignSelf: 'flex-end', display: 'flex', alignItems: 'flex-end', gap: 2, paddingLeft: 6, overflow: 'hidden' }}>
@@ -174,7 +187,7 @@ export function App({ initial }: { initial: Loaded }) {
               const act = id === active;
               return (
                 <div key={id} onClick={() => openTab(id)} onAuxClick={e => { if (e.button === 1) closeTab(id); }} className={'tab' + (act ? ' active' : '')}
-                  style={{ height: 34, display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px 0 14px', minWidth: 0, flex: '0 1 200px', boxSizing: 'border-box', borderRadius: '8px 8px 0 0', background: act ? 'var(--bg)' : undefined, color: act ? 'var(--text)' : 'var(--muted)', fontSize: 13, cursor: 'default' }}>
+                  style={{ height: 34, display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px 0 14px', minWidth: 0, flex: '0 1 200px', boxSizing: 'border-box', borderRadius: '8px 8px 0 0', background: act ? 'var(--bg)' : undefined, color: act ? 'var(--text)' : 'var(--muted)', fontSize: FS.ui, cursor: 'default' }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tabTitle(id)}</span>
                   <button onClick={e => { e.stopPropagation(); closeTab(id); }} title="Close tab" className="tab-close"
                     style={{ width: 20, height: 20, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--faint)', borderRadius: 5, padding: 0, cursor: 'pointer' }}>
@@ -189,10 +202,10 @@ export function App({ initial }: { initial: Loaded }) {
           <div style={{ width: 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px)', flex: 'none' }} />
         </div>
 
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: TEXT_ZOOM[prefs.textSize] }}>
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: TEXT_ZOOM[prefs.textScale] }}>
           {!ui.sidebarHidden && (
             <Sidebar vault={vault} ui={{ ...ui, active }} setUi={setUi} today={today} dates={dates}
-              todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)}
+              zoom={TEXT_ZOOM[prefs.textScale]} todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)}
               onNewNote={folder => newNote('Untitled', folder)} onNewFolder={newFolder} />
           )}
 
@@ -202,7 +215,7 @@ export function App({ initial }: { initial: Loaded }) {
 
               {blocks && (
                 <div style={{ maxWidth: LINE_WIDTH[prefs.lineWidth], margin: '0 auto', padding: '40px 56px 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, fontSize: 12.5, color: 'var(--faint)', height: 28 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, fontSize: FS.sm, color: 'var(--faint)', height: 28 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                       {crumbs.map((c, i) => (
                         <span key={i} style={{ display: 'contents' }}>
@@ -214,7 +227,7 @@ export function App({ initial }: { initial: Loaded }) {
                     {date && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <button onClick={() => prevDay && openTab('daily:' + prevDay)} title="Previous day" className="hov-text-active" style={navBtn(!prevDay)}><ChevronLeft /></button>
-                        {date !== today && <button onClick={openToday} className="hov-text-active" style={{ border: 'none', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: 12.5, padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}>Today</button>}
+                        {date !== today && <button onClick={openToday} className="hov-text-active" style={{ border: 'none', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: FS.sm, padding: '3px 8px', borderRadius: 6, cursor: 'pointer' }}>Today</button>}
                         <button onClick={() => nextDay && openTab('daily:' + nextDay)} title="Next day" className="hov-text-active" style={navBtn(!nextDay)}><ChevronRight /></button>
                       </div>
                     )}
@@ -223,14 +236,14 @@ export function App({ initial }: { initial: Loaded }) {
                   {date ? (
                     <>
                       <h1 style={H1}>{fmt(date, { weekday: 'long', month: 'long', day: 'numeric' })}</h1>
-                      <div style={{ fontSize: 14, color: 'var(--muted)' }}>{(date === today ? 'Today' : dailyName(prefs.daily, date)) + ` · Week ${isoWeek(date)}, ${date.slice(0, 4)}`}</div>
+                      <div style={{ fontSize: FS.md, color: 'var(--muted)' }}>{(date === today ? 'Today' : dailyName(prefs.daily, date)) + ` · Week ${isoWeek(date)}, ${date.slice(0, 4)}`}</div>
                     </>
                   ) : note && (
                     <>
                       <input ref={titleInput} value={note.title} placeholder="Untitled" spellCheck={false}
                         onChange={e => { const title = e.target.value; update(v => renameNote(v, note.id, title)); }}
                         style={{ ...H1, display: 'block', width: '100%', padding: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit' }} />
-                      <div style={{ fontSize: 14, color: 'var(--muted)' }}>{words} words</div>
+                      <div style={{ fontSize: FS.md, color: 'var(--muted)' }}>{words} words</div>
                       <div style={{ height: 26 }} />
                     </>
                   )}
@@ -260,19 +273,19 @@ export function App({ initial }: { initial: Loaded }) {
               {!active && (
                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', textAlign: 'center' }}>
-                    <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-2)' }}>No open notes</span>
-                    <span style={{ fontSize: 13.5, color: 'var(--muted)' }}>Open one from the sidebar, or start something new.</span>
+                    <span style={{ fontSize: FS.lg, fontWeight: 500, color: 'var(--text-2)' }}>No open notes</span>
+                    <span style={{ fontSize: FS.ui, color: 'var(--muted)' }}>Open one from the sidebar, or start something new.</span>
                     <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                      <button onClick={openToday} className="btn-outline" style={{ border: '1px solid var(--border-strong)', background: 'var(--elev)', color: 'var(--text)', font: 'inherit', fontSize: 13, padding: '6px 12px', borderRadius: 7, cursor: 'pointer' }}>Open today</button>
-                      <button onClick={() => newNote()} className="btn-ghost" style={{ border: '1px solid transparent', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: 13, padding: '6px 12px', borderRadius: 7, cursor: 'pointer' }}>New note</button>
+                      <button onClick={openToday} className="btn-outline" style={{ border: '1px solid var(--border-strong)', background: 'var(--elev)', color: 'var(--text)', font: 'inherit', fontSize: FS.ui, padding: '6px 12px', borderRadius: 7, cursor: 'pointer' }}>Open today</button>
+                      <button onClick={() => newNote()} className="btn-ghost" style={{ border: '1px solid transparent', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: FS.ui, padding: '6px 12px', borderRadius: 7, cursor: 'pointer' }}>New note</button>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div style={{ height: 28, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '0 16px', fontSize: 12, color: saveError ? 'var(--pri-h)' : 'var(--faint)', borderTop: '1px solid var(--border)' }}>
-              <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--faint)' }}>{statusLeft}</span>
+            <div style={{ height: 28, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '0 16px', fontSize: FS.sm, color: saveError ? 'var(--pri-h)' : 'var(--faint)', borderTop: '1px solid var(--border)' }}>
+              <span style={{ fontFamily: MONO, fontSize: FS.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--faint)' }}>{statusLeft}</span>
               <span style={{ whiteSpace: 'nowrap' }}>{statusRight}</span>
             </div>
           </main>

@@ -1,0 +1,64 @@
+html, body, #root { margin: 0; height: 100%; }
+body { background: #1d1d1f; }
+a { color: inherit; text-decoration: none; }
+textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
+::selection { background: var(--accent-soft); }
+
+/* Hover and focus states. Inline styles set the resting state, so these need !important to win. */
+.hov-bg:hover { background: var(--hover) !important; }
+.hov-active:hover { background: var(--active) !important; }
+.hov-text:hover { color: var(--text) !important; }
+.hov-text-active:hover { background: var(--active) !important; color: var(--text) !important; }
+.hov-accent:hover { color: var(--accent) !important; }
+.btn-outline:hover { border-color: var(--accent) !important; }
+.btn-ghost:hover { color: var(--text) !important; background: var(--hover) !important; }
+
+.task-row:hover { background: var(--hover); }
+.task-row:focus { background: var(--hover); box-shadow: inset 0 0 0 1.5px var(--accent-ring); }
+.checkbox:hover { border-color: var(--accent) !important; }
+.del-btn { opacity: 0; }
+.task-row:hover .del-btn, .task-row:focus-within .del-btn { opacity: 1; }
+.del-btn:hover { color: var(--text) !important; background: var(--active) !important; }
+
+.tab:hover { background: var(--hover); }
+.tab-close { opacity: 0; }
+.tab:hover .tab-close, .tab.active .tab-close { opacity: 1; }
+.tab-close:hover { background: var(--active) !important; color: var(--text) !important; }
+
+.boot { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; font: 14px 'Geist Sans', ui-sans-serif, system-ui, sans-serif; color: #b6b6bb; }
+.boot small { color: #727279; font-size: 12.5px; }
+
+/* The title bar drags the window; anything clickable inside it opts out. */
+.titlebar { -webkit-app-region: drag; user-select: none; }
+.titlebar button, .titlebar .tab { -webkit-app-region: no-drag; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border: 3px solid transparent; border-radius: 999px; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--faint); }
+
+/* Folder rows show their create buttons on hover, in place of the note count. */
+.side-actions { display: none !important; }
+.side-row:hover .side-actions { display: flex !important; }
+.side-row:hover .side-meta { display: none; }
+
+/* Copy button on inline code, shown on hover (and briefly after copying). */
+.code-copy { display: none; align-items: center; justify-content: center; width: 16px; height: 16px; margin: 0 -2px 0 4px; padding: 0; border: none; border-radius: 3px; background: transparent; color: var(--muted); cursor: pointer; vertical-align: -2px; }
+.code-chip:hover .code-copy, .code-chip.copied .code-copy { display: inline-flex; }
+.code-copy:hover { color: var(--text); background: var(--active); }
+.code-chip.copied .code-copy { color: var(--accent); }
+
+/* Attached files in text: a paperclip chip that opens the file. */
+.attachment { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 0 7px 0 6px; margin: 0 1px; border: 1px solid var(--border); border-radius: 5px; background: var(--code); color: var(--text-2); font-size: 0.9em; line-height: 1.6; vertical-align: 1px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.attachment svg { flex: none; color: var(--muted); }
+.attachment:hover { border-color: var(--accent-ring); color: var(--text); }
+.attachment.missing { cursor: default; color: var(--faint); text-decoration: line-through; text-decoration-color: var(--faint); }
+.attachment.missing:hover { border-color: var(--border); }
+
+/* Images in notes; the open button shows on hover. */
+.note-image { position: relative; display: inline-block; max-width: 100%; margin: 12px 0; }
+.note-image img { display: block; max-width: 100%; max-height: 520px; border-radius: 8px; border: 1px solid var(--border); background: var(--code); }
+.note-image .image-open { position: absolute; top: 8px; right: 8px; display: none; align-items: center; gap: 6px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--elev); color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.note-image:hover .image-open { display: inline-flex; }
+.note-image .image-open:hover { color: var(--text); border-color: var(--accent-ring); }
+.drop-target { outline: 2px dashed var(--accent-ring); outline-offset: 6px; border-radius: 6px; }

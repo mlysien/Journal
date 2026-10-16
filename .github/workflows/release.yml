@@ -18,7 +18,8 @@ jobs:
           - os: ubuntu-latest
             target: --linux
           - os: windows-latest
-            target: --win
+            # The MSI summary stream only supports code page 1252, so "Łysień" can't be used as Manufacturer.
+            target: --win "-c.extraMetadata.author.name=Mateusz Lysien"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

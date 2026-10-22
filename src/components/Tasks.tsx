@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { fmt, parseIso, iso } from '../dates';
 import { FS, MONO } from '../theme';
-import { PRI, toneOf, type Pri, type TaskItem } from '../vault';
+import { formatSpent, PRI, toneOf, type Pri, type TaskItem } from '../vault';
 import { Check, Close, CupIcon, PauseIcon, PlayIcon, Plus, StopIcon, TomatoIcon } from './icons';
 import { InlineText } from './InlineText';
 import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
@@ -140,6 +140,7 @@ function TaskTimer({ t, timer }: { t: TaskItem; timer: Timer }) {
   );
 }
 
+const spentLabel = (t: TaskItem) => <span title={`${formatSpent(t.spent)} of pomodoro focus time`}>⏱ {formatSpent(t.spent)}</span>;
 const carryTitle = (n: number) => `Carried over ${n} time${n === 1 ? '' : 's'}`;
 const createdTitle = (t: TaskItem) => `Created ${fmt(t.createdOn, { month: 'short', day: 'numeric' })}`;
 
@@ -178,6 +179,7 @@ export function DailyTaskRow({ t, actions, show, menu, setMenu }: { t: TaskItem;
       <TaskTitle t={t} actions={actions} style={titleStyle(t)} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: FS.sm, color: tone ? 'var(--warm)' : 'var(--faint)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>
         {actions.timer && <TaskTimer t={t} timer={actions.timer} />}
+        {t.spent > 0 && spentLabel(t)}
         {show.carried && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
         {show.age && <span title={createdTitle(t)} style={{ minWidth: 50, textAlign: 'right' }}>{t.done ? 'done' : t.age === 0 ? 'today' : `${t.age}d old`}</span>}
         {show.pri && <span data-primenu="1" style={{ position: 'relative', display: 'flex' }}>
@@ -286,6 +288,7 @@ export function PastTasks({ done, open, actions, show, onOpenToday }: { done: Ta
               </button>
               <TaskTitle t={t} actions={t.done ? { ...actions, rename: undefined } : actions} style={titleStyle(t)} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: FS.sm, color: 'var(--faint)', flex: 'none' }}>
+                {t.spent > 0 && spentLabel(t)}
                 {show.carried && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
                 <span style={{ color: t.done ? 'var(--faint)' : 'var(--muted)' }}>{t.done ? 'done' : 'open'}</span>
                 {show.pri && <span style={{ width: 20, display: 'flex', justifyContent: 'center' }}><span style={dot(t.pri, t.done)} /></span>}

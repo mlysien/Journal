@@ -5,7 +5,7 @@ import type { Prefs } from './vault';
 /**
  * A pomodoro timer for one task: focus, then a break (a long one after every fourth focus), then
  * the next focus, which starts on its own or, with pomoAuto off, waits paused at full length for a
- * click. Kept in memory only.
+ * click. Kept in memory only; the focus time it adds up is handed to `onWork` to save on the task.
  */
 export interface Pomodoro {
   taskId: string;
@@ -30,6 +30,8 @@ export interface Timer {
   /** Pauses or resumes. */
   toggle: () => void;
   stop: () => void;
+  /** Focus time in the current pomodoro not yet handed to `onWork`, for saving when the app closes. */
+  unsaved: () => { taskId: string; ms: number } | null;
 }
 
 const MIN = 60_000;
@@ -37,11 +39,27 @@ const MIN = 60_000;
 /** 1500000 → `25:00`. */
 export const clock = (ms: number) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
-export function usePomodoro(prefs: Prefs): Timer {
+/** Focus time so far in a pomodoro, in ms; none during a break. */
+const worked = (p: Pomodoro, t: number) => p.phase !== 'focus' ? 0 : p.total - (p.endsAt === null ? p.left : Math.max(0, p.endsAt - t));
+
+/** `onWork` gets the focus time spent on a task each time a pomodoro ends, is stopped or is replaced. */
+export function usePomodoro(prefs: Prefs, onWork: (taskId: string, ms: number) => void): Timer {
   const [pomo, setPomo] = useState<Pomodoro | null>(null);
   const [now, setNow] = useState(Date.now);
   const latest = useRef(prefs);
   latest.current = prefs;
+  const current = useRef(pomo);
+  current.current = pomo;
+  const report = useRef(onWork);
+  report.current = onWork;
+  // The ref is updated right away, so focus time is never handed over twice before a render.
+  const go = (next: Pomodoro | null) => { current.current = next; setPomo(next); };
+  /** Hands over the focus time of the running pomodoro, then clears or replaces it. */
+  const end = (next: Pomodoro | null) => {
+    const p = current.current, ms = p ? worked(p, Date.now()) : 0;
+    if (p && ms > 0) report.current(p.taskId, ms);
+    go(next);
+  };
   const left = !pomo ? 0 : pomo.endsAt === null ? pomo.left : Math.max(0, pomo.endsAt - now);
 
   // Ticks twice a second, so the countdown never skips a digit.
@@ -52,7 +70,7 @@ export function usePomodoro(prefs: Prefs): Timer {
   }, [pomo?.endsAt]);
 
   // Turning the timer off in Settings stops it.
-  useEffect(() => { if (!prefs.pomo) setPomo(null); }, [prefs.pomo]);
+  useEffect(() => { if (!prefs.pomo) end(null); }, [prefs.pomo]);
 
   // A phase ran out: focus moves on to a break, a break to the next focus.
   useEffect(() => {
@@ -60,14 +78,15 @@ export function usePomodoro(prefs: Prefs): Timer {
     const p = latest.current, t = Date.now();
     if (p.pomoSound) playTimer();
     if (pomo.phase === 'focus') {
+      report.current(pomo.taskId, pomo.total);
       const done = pomo.done + 1, long = done % 4 === 0, total = (long ? p.pomoLong : p.pomoBreak) * MIN;
       window.journal.notify('Pomodoro done', `${pomo.title}\nTime for a ${total / MIN}-minute ${long ? 'long ' : ''}break.`);
-      setPomo({ ...pomo, phase: 'break', done, total, endsAt: t + total, left: total });
+      go({ ...pomo, phase: 'break', done, total, endsAt: t + total, left: total });
     } else {
       const total = p.pomoFocus * MIN;
       if (p.pomoAuto) window.journal.notify('Break over', `Next pomodoro started: ${pomo.title}`);
       else window.journal.notify('Break over', `Ready for the next pomodoro? ${pomo.title}`);
-      setPomo({ ...pomo, phase: 'focus', total, endsAt: p.pomoAuto ? t + total : null, left: total });
+      go({ ...pomo, phase: 'focus', total, endsAt: p.pomoAuto ? t + total : null, left: total });
     }
   }, [now, pomo]);
 
@@ -79,15 +98,17 @@ export function usePomodoro(prefs: Prefs): Timer {
   return {
     pomo, left,
     start: (taskId, title) => {
-      const total = latest.current.pomoFocus * MIN, t = Date.now();
+      const total = latest.current.pomoFocus * MIN, t = Date.now(), p = current.current;
       setNow(t);
-      setPomo(p => ({ taskId, title, phase: 'focus', total, endsAt: t + total, left: total, done: p?.taskId === taskId ? p.done : 0 }));
+      end({ taskId, title, phase: 'focus', total, endsAt: t + total, left: total, done: p?.taskId === taskId ? p.done : 0 });
     },
     toggle: () => {
       const t = Date.now();
       setNow(t);
-      setPomo(p => !p ? p : p.endsAt === null ? { ...p, endsAt: t + p.left } : { ...p, endsAt: null, left: Math.max(0, p.endsAt - t) });
+      const p = current.current;
+      if (p) go(p.endsAt === null ? { ...p, endsAt: t + p.left } : { ...p, endsAt: null, left: Math.max(0, p.endsAt - t) });
     },
-    stop: () => setPomo(null),
+    stop: () => end(null),
+    unsaved: () => { const p = current.current, ms = p ? worked(p, Date.now()) : 0; return p && ms > 0 ? { taskId: p.taskId, ms } : null; },
   };
 }

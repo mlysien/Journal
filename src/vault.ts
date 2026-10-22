@@ -24,6 +24,8 @@ export interface DailyTask {
   day: string;
   done?: boolean;
   doneOn?: string;
+  /** Minutes of pomodoro focus time spent on the task. */
+  spent?: number;
 }
 
 /**
@@ -442,7 +444,14 @@ export function useVault(initial: Loaded) {
     const t = setTimeout(save, 300);
     return () => clearTimeout(t);
   }, [vault, ui, save]);
-  useEffect(() => { window.journal.onFlush(save); }, [save]);
+  // Before the window closes: last changes that aren't in state yet, like a running timer's time.
+  const beforeClose = useRef<((v: Vault) => Vault) | null>(null);
+  useEffect(() => {
+    window.journal.onFlush(() => {
+      if (beforeClose.current) latest.current = { ...latest.current, vault: beforeClose.current(latest.current.vault) };
+      return save();
+    });
+  }, [save]);
 
   const update = useCallback((fn: (v: Vault) => Vault) => setVault(fn), []);
 
@@ -455,7 +464,7 @@ export function useVault(initial: Loaded) {
     for (const d of [...dirsOnDisk.current]) if (gone(d)) dirsOnDisk.current.delete(d);
     setVault(fn);
   }, []);
-  return { today, vault, update, ui, setUi, saveError, save, trash };
+  return { today, vault, update, ui, setUi, saveError, save, trash, beforeClose };
 }
 
 /* ---------- priority marks ---------- */
@@ -484,14 +493,25 @@ export interface TaskItem {
   carried: number;
   done: boolean;
   createdOn: string;
+  /** Minutes of pomodoro focus time; 0 when none. */
+  spent: number;
 }
 
 export function dailyTaskItems(v: Vault, today: string): TaskItem[] {
   return v.tasks.map(t => ({
     id: t.id, title: t.title, pri: t.pri, age: Math.max(0, daysBetween(t.createdOn, today)), carried: t.carried,
-    done: !!t.done, createdOn: t.createdOn,
+    done: !!t.done, createdOn: t.createdOn, spent: t.spent ?? 0,
   }));
 }
+
+/** Adds focus time, in ms, to a task's time spent; it is kept in whole minutes. */
+export const addSpent = (v: Vault, id: string, ms: number): Vault => {
+  const min = Math.round(ms / 60_000);
+  return min ? { ...v, tasks: v.tasks.map(t => (t.id === id ? { ...t, spent: (t.spent ?? 0) + min } : t)) } : v;
+};
+
+/** 85 → `1h 25m`. */
+export const formatSpent = (min: number) => min < 60 ? `${min}m` : `${Math.floor(min / 60)}h` + (min % 60 ? ` ${min % 60}m` : '');
 
 /** 0 = fresh, 1 = aging (5+ days or 3+ carries), 2 = long-running (10+ days or 6+ carries). */
 export const toneOf = (t: { done: boolean; age: number; carried: number | null }) =>

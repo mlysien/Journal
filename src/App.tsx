@@ -5,7 +5,7 @@ import { FS, MONO, themeStyle, UI, type Theme, type ThemePref } from './theme';
 import { dailyName, dateFromName } from './dailyFormat';
 import { AssetContext, makeAssets } from './assets';
 import {
-  addFolder, dailyDates, dailyFile, dailyTaskItems, folderPath, moveFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
+  addFolder, addSpent, dailyDates, dailyFile, dailyTaskItems, folderPath, moveFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
   type Loaded, type Pri, type Prefs, type ShortcutId, type TabId,
 } from './vault';
 import { keyName } from './keys';
@@ -41,14 +41,15 @@ const TITLE_BAR = {
 };
 
 export function App({ initial }: { initial: Loaded }) {
-  const { today, vault, update, ui, setUi, saveError, save, trash } = useVault(initial);
+  const { today, vault, update, ui, setUi, saveError, save, trash, beforeClose } = useVault(initial);
   /** A note just created, and whether its title or its body should get the caret. */
   const [justCreated, setJustCreated] = useState<{ id: string; focus: 'title' | 'body' } | null>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const { prefs } = vault;
   const upd = useUpdate();
-  const timer = usePomodoro(prefs);
+  const timer = usePomodoro(prefs, (id, ms) => update(v => addSpent(v, id, ms)));
+  beforeClose.current = v => { const w = timer.unsaved(); return w ? addSpent(v, w.taskId, w.ms) : v; };
   /** The update banner can be dismissed until the next version comes along. */
   const [dismissed, setDismissed] = useState<string | null>(null);
   const banner = (upd.state === 'ready' || upd.state === 'available') && dismissed !== upd.version ? upd : null;

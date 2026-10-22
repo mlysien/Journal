@@ -2,35 +2,35 @@
  * Daily tasks are stored in their day's note, as a `## Tasks` section at the top of the file:
  *
  *     ## Tasks
- *     - [ ] Write the report ➕ 2026-10-10 [carried:: 3] !high
+ *     - [ ] Write the report ➕ 2026-10-10 [carried:: 3] [spent:: 1h 15m] !high
  *     - [x] Call the bank ➕ 2026-10-16 ✅ 2026-10-16
  *
  * Open tasks sit in the note of the day they are on (rollover moves them), done tasks in the note
- * of the day they were done. `➕`/`✅` dates follow the Obsidian Tasks plugin, `[carried:: n]` is a
- * Dataview field.
+ * of the day they were done. `➕`/`✅` dates follow the Obsidian Tasks plugin; `[carried:: n]` and
+ * `[spent:: …]` (pomodoro focus time) are Dataview fields.
  */
 import { splitBlocks } from './markdown';
-import { setNoteTaskPri, splitPriMark, uid, type DailyTask } from './vault';
+import { formatSpent, setNoteTaskPri, splitPriMark, uid, type DailyTask } from './vault';
 
 export const TASKS_HEADING = '## Tasks';
 
 const TASK_LINE = /^- \[([ xX])\] ?(.*)$/;
-const SUFFIX = /\s*(?:➕ (\d{4}-\d{2}-\d{2})|✅ (\d{4}-\d{2}-\d{2})|\[carried:: (\d+)\])\s*$/u;
+const SUFFIX = /\s*(?:➕ (\d{4}-\d{2}-\d{2})|✅ (\d{4}-\d{2}-\d{2})|\[carried:: (\d+)\]|\[spent:: (?:(\d+)h)? ?(?:(\d+)m)?\])\s*$/u;
 
 function parseTask(line: string, date: string): DailyTask | null {
   const m = line.match(TASK_LINE);
   if (!m) return null;
-  let rest = m[2], created: string | undefined, done: string | undefined, carried = 0;
+  let rest = m[2], created: string | undefined, done: string | undefined, carried = 0, spent = 0;
   let { text, pri } = splitPriMark(rest);
   rest = text;
   for (let s: RegExpMatchArray | null; (s = rest.match(SUFFIX)) && s.index! > 0; rest = rest.slice(0, s.index)) {
-    if (s[1]) created ??= s[1]; else if (s[2]) done ??= s[2]; else carried = +s[3];
+    if (s[1]) created ??= s[1]; else if (s[2]) done ??= s[2]; else if (s[3]) carried = +s[3]; else spent = +(s[4] ?? 0) * 60 + +(s[5] ?? 0);
   }
   // The priority mark goes last, but files edited elsewhere may have it before the dates.
   if (!pri) ({ text: rest, pri } = splitPriMark(rest));
   const isDone = m[1] !== ' ';
   return {
-    id: uid(), title: rest.trim(), pri: pri ?? 'm', createdOn: created ?? date, carried, day: date,
+    id: uid(), title: rest.trim(), pri: pri ?? 'm', createdOn: created ?? date, carried, day: date, ...(spent ? { spent } : {}),
     ...(isDone ? { done: true, doneOn: done ?? date } : {}),
   };
 }
@@ -38,6 +38,7 @@ function parseTask(line: string, date: string): DailyTask | null {
 function taskLine(t: DailyTask): string {
   let s = `- [${t.done ? 'x' : ' '}] ${t.title} ➕ ${t.createdOn}`;
   if (t.carried) s += ` [carried:: ${t.carried}]`;
+  if (t.spent) s += ` [spent:: ${formatSpent(t.spent)}]`;
   if (t.done && t.doneOn) s += ` ✅ ${t.doneOn}`;
   return setNoteTaskPri(s, t.pri);
 }

@@ -55,10 +55,31 @@ export interface Prefs {
   /** Where daily notes live and how their files are named. */
   daily: DailyLocation;
   carry: boolean;
-  meta: boolean;
+  /** What daily task rows show next to the title. */
+  showPri: boolean;
+  showAge: boolean;
+  showCarried: boolean;
+  /** Play a short chime when a task is checked off. */
+  sound: boolean;
   live: boolean;
   spell: boolean;
+  /** Key bindings, like `Ctrl+Shift+T`; an empty string turns one off. */
+  keys: Record<ShortcutId, string>;
 }
+
+export type ShortcutId = 'today' | 'search' | 'newNote' | 'closeTab' | 'reopenTab' | 'sidebar';
+
+export const SHORTCUTS: { id: ShortcutId; label: string; default: string }[] = [
+  { id: 'today', label: 'Open today’s daily note', default: 'Ctrl+D' },
+  { id: 'search', label: 'Search', default: 'Ctrl+K' },
+  { id: 'newNote', label: 'New note', default: 'Ctrl+N' },
+  { id: 'closeTab', label: 'Close tab', default: 'Ctrl+W' },
+  { id: 'reopenTab', label: 'Reopen closed tab', default: 'Ctrl+Shift+T' },
+  { id: 'sidebar', label: 'Show or hide the sidebar', default: 'Ctrl+\\' },
+];
+
+/** A custom sidebar icon: a name from the icon set and a colour name ('' for the default). */
+export interface IconChoice { icon: string; color: string }
 
 export interface Vault {
   version: 1;
@@ -75,6 +96,10 @@ export interface Vault {
   tasks: DailyTask[];
   lastRollover: string;
   prefs: Prefs;
+  /** Custom sidebar icons, keyed `f:<folder path>` or `n:<note path>`. */
+  icons: Record<string, IconChoice>;
+  /** Hand-arranged order of folders, as child names keyed by parent path ('' for the vault root). */
+  order: Record<string, string[]>;
 }
 
 export const SIDEBAR_WIDTH = 256, SIDEBAR_MIN = 180, SIDEBAR_MAX = 560;
@@ -98,12 +123,17 @@ interface StateFile {
   tasks?: DailyTask[];
   lastRollover: string;
   prefs: Prefs;
+  icons?: Record<string, IconChoice>;
+  order?: Record<string, string[]>;
   ui: UiState;
 }
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-const DEFAULT_PREFS: Prefs = { theme: 'system', accent: 'violet', textScale: 'medium', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true, meta: true, live: true, spell: false };
+const DEFAULT_PREFS: Prefs = { theme: 'system', accent: 'violet', textScale: 'medium', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true,
+  showPri: true, showAge: true, showCarried: true, sound: true, live: true, spell: false,
+  keys: Object.fromEntries(SHORTCUTS.map(s => [s.id, s.default])) as Record<ShortcutId, string>,
+};
 
 const defaultUi = (today: string): UiState => ({
   tabs: [`daily:${today}`],
@@ -169,8 +199,35 @@ export function notePath(v: Vault, folder: string | null, title: string, selfId:
 }
 
 export function renameNote(v: Vault, id: string, title: string): Vault {
-  const n = v.notes[id];
-  return { ...v, notes: { ...v.notes, [id]: { ...n, title, path: notePath(v, n.folder, title, id) } } };
+  const n = v.notes[id], path = notePath(v, n.folder, title, id);
+  // The note's custom icon follows it to its new path.
+  const icons = { ...v.icons };
+  if (icons['n:' + n.path]) { icons['n:' + path] = icons['n:' + n.path]; if (path !== n.path) delete icons['n:' + n.path]; }
+  return { ...v, icons, notes: { ...v.notes, [id]: { ...n, title, path } } };
+}
+
+const under = (p: string, dir: string) => p === dir || p.startsWith(dir + '/');
+
+/** The vault without a folder and everything in it. */
+export function removeFolder(v: Vault, dir: string): Vault {
+  const notes = Object.fromEntries(Object.entries(v.notes).filter(([, n]) => !under(n.path, dir)));
+  const icons = Object.fromEntries(Object.entries(v.icons).filter(([k]) => !under(k.slice(2), dir)));
+  return { ...v, notes, icons, folders: v.folders.filter(f => !under(f, dir)), assets: v.assets.filter(a => !under(a, dir)) };
+}
+
+/** The vault without a daily note: its text and the tasks saved in it. */
+export function removeDaily(v: Vault, date: string): Vault {
+  const daily = { ...v.daily };
+  delete daily[date];
+  return { ...v, daily, tasks: v.tasks.filter(t => taskDay(t) !== date) };
+}
+
+/** Move folder `name` among its siblings in `parent`, to just before `before` (or to the end). */
+export function moveFolder(v: Vault, parent: string, siblings: string[], name: string, before: string | null): Vault {
+  const rest = siblings.filter(s => s !== name);
+  const at = before === null ? rest.length : rest.indexOf(before);
+  rest.splice(at < 0 ? rest.length : at, 0, name);
+  return { ...v, order: { ...v.order, [parent]: rest } };
 }
 
 function seedNotes(today: string): Note[] {
@@ -223,8 +280,12 @@ export function fromSnapshot(snap: VaultSnapshot, today: string): Loaded {
   const obsidian = !state && snap.obsidianDaily
     ? { folder: normalizeFolder(snap.obsidianDaily.folder ?? ''), format: snap.obsidianDaily.format?.trim() || 'YYYY-MM-DD' }
     : null;
-  const saved: Partial<Prefs> & { textSize?: unknown } = { ...state?.prefs };
+  const saved: Partial<Prefs> & { textSize?: unknown; meta?: unknown } = { ...state?.prefs };
   delete saved.textSize;
+  // One switch for age and carry-over count became separate ones.
+  if (saved.meta === false) { saved.showAge ??= false; saved.showCarried ??= false; }
+  delete saved.meta;
+  saved.keys = { ...DEFAULT_PREFS.keys, ...saved.keys };
   // Values from earlier versions: the Blue accent and the Default text size.
   if (!isAccent(saved.accent)) delete saved.accent;
   if ((saved.textScale as string) === 'default') saved.textScale = 'medium';
@@ -254,8 +315,11 @@ export function fromSnapshot(snap: VaultSnapshot, today: string): Loaded {
     tasks: tasks.concat(state?.tasks ?? []),
     lastRollover: state?.lastRollover ?? today,
     prefs,
+    icons: state?.icons ?? {},
+    order: state?.order ?? {},
   };
-  return { vault: startDay(vault, today), ui: { ...defaultUi(today), ...state?.ui }, files: snap.files, dirs: snap.dirs };
+  const ui = { ...defaultUi(today), ...state?.ui };
+  return { vault: startDay(vault, today), ui: onNewDay(ui, vault.lastRollover, today), files: snap.files, dirs: snap.dirs };
 }
 
 /** Days that have a daily note file: a body, or tasks to keep in it. */
@@ -277,7 +341,7 @@ function stateOf(v: Vault, ui: UiState): string {
   const pathOf = (id: string) => v.notes[id]?.path ?? id;
   const tab = (t: TabId) => (t.startsWith('note:') ? 'note:' + pathOf(t.slice(5)) : t);
   const file: StateFile = {
-    version: 1, lastRollover: v.lastRollover, prefs: v.prefs,
+    version: 1, lastRollover: v.lastRollover, prefs: v.prefs, icons: v.icons, order: v.order,
     ui: { ...ui, tabs: ui.tabs.map(tab), active: ui.active && tab(ui.active) },
   };
   return JSON.stringify(file, null, 2);
@@ -287,6 +351,18 @@ function stateOf(v: Vault, ui: UiState): string {
 function startDay(v: Vault, today: string): Vault {
   const withNote = v.daily[today] ? v : { ...v, daily: { ...v.daily, [today]: [''] } };
   return rollover(withNote, today);
+}
+
+/**
+ * On a new day, today's daily note becomes the active tab. A tab still showing the previous
+ * day's note turns into today's, so day tabs don't pile up.
+ */
+export function onNewDay(ui: UiState, lastDay: string, today: string): UiState {
+  if (lastDay >= today) return ui;
+  const tab = 'daily:' + today, prev = 'daily:' + lastDay;
+  let tabs = ui.tabs.includes(tab) ? ui.tabs : ui.tabs.includes(prev) ? ui.tabs.map(t => (t === prev ? tab : t)) : [...ui.tabs, tab];
+  tabs = tabs.filter((t, i) => tabs.indexOf(t) === i);
+  return { ...ui, tabs, active: tab };
 }
 
 /** Move unfinished daily tasks into today, once per new day. */
@@ -309,7 +385,12 @@ export function useVault(initial: Loaded) {
     const id = setInterval(() => setToday(t => (todayIso() !== t ? todayIso() : t)), 30_000);
     return () => clearInterval(id);
   }, []);
-  useEffect(() => { setVault(v => startDay(v, today)); }, [today]);
+  const dayShown = useRef(today);
+  useEffect(() => {
+    setVault(v => startDay(v, today));
+    setUi(u => onNewDay(u, dayShown.current, today));
+    dayShown.current = today;
+  }, [today]);
 
   // Saving: the latest state is read from refs, and saves run one after another.
   const latest = useRef({ vault, ui });
@@ -353,7 +434,17 @@ export function useVault(initial: Loaded) {
   useEffect(() => { window.journal.onFlush(save); }, [save]);
 
   const update = useCallback((fn: (v: Vault) => Vault) => setVault(fn), []);
-  return { today, vault, update, ui, setUi, saveError, save };
+
+  /** Move a file or folder to the OS trash, then drop it from the vault with `fn`. */
+  const trash = useCallback(async (rel: string, fn: (v: Vault) => Vault) => {
+    await queue.current;
+    await window.journal.trash(rel);
+    const gone = (p: string) => p === rel || p.startsWith(rel + '/');
+    onDisk.current = Object.fromEntries(Object.entries(onDisk.current).filter(([p]) => !gone(p)));
+    for (const d of [...dirsOnDisk.current]) if (gone(d)) dirsOnDisk.current.delete(d);
+    setVault(fn);
+  }, []);
+  return { today, vault, update, ui, setUi, saveError, save, trash };
 }
 
 /* ---------- priority marks ---------- */

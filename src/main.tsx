@@ -19,6 +19,8 @@ function Root() {
       .then(snap => setLoaded(fromSnapshot(snap, todayIso())))
       .catch(e => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+  // The main process shows the window (and closes the splash screen) once there's something to see.
+  useEffect(() => { if (loaded || error) window.journal.ready(); }, [loaded, error]);
   if (error) return <div className="boot">Could not open the vault folder.<br /><small>{error}</small></div>;
   if (!loaded) return <div className="boot" />;
   return <App initial={loaded} />;

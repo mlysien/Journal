@@ -23,6 +23,14 @@ export interface VaultSync {
   prune: string[];
 }
 
+/** Where an app update stands. `available` is for installs that can't update themselves (the .deb). */
+export type UpdateStatus =
+  | { state: 'idle' | 'checking' | 'none' | 'unsupported' }
+  | { state: 'available'; version: string; url: string }
+  | { state: 'downloading'; version: string; percent: number }
+  | { state: 'ready'; version: string }
+  | { state: 'error'; error: string };
+
 export interface JournalApi {
   platform: NodeJS.Platform;
   load(): Promise<VaultSnapshot>;
@@ -39,6 +47,8 @@ export interface JournalApi {
   pathForFile(file: File): string;
   /** Of the given file:// URIs or absolute paths, the ones that are existing files (as paths); null if any isn't. */
   existingFiles(candidates: string[]): Promise<string[] | null>;
+  /** Moves a vault file or folder to the OS trash. */
+  trash(rel: string): Promise<void>;
   /** Creates a folder (and any missing parents) inside the vault. */
   mkdir(rel: string): Promise<void>;
   /** Shows a folder picker; resolves to the new root, or null if cancelled. */
@@ -49,6 +59,18 @@ export interface JournalApi {
   /** Fetches a web page's title for a pasted link; null if it can't be read. */
   fetchTitle(url: string): Promise<string | null>;
   setTitleBar(colors: { color: string; symbolColor: string }): void;
+  /** Whether the app starts when the user logs in. */
+  getAutostart(): Promise<boolean>;
+  setAutostart(on: boolean): Promise<void>;
+  /** Tells the main process the app has rendered, so the splash screen can go. */
+  ready(): void;
+  version: string;
+  updateStatus(): Promise<UpdateStatus>;
+  checkForUpdates(): Promise<UpdateStatus>;
+  /** Restarts into a downloaded update. */
+  installUpdate(): Promise<void>;
+  /** Calls `fn` whenever the update status changes; returns a function that stops it. */
+  onUpdateStatus(fn: (s: UpdateStatus) => void): () => void;
   /** Registers the function that writes pending changes; the window waits for it before closing. */
   onFlush(fn: () => Promise<void>): void;
 }

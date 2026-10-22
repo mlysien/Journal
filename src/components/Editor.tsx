@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type CSSProperties, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { codeToks, parseBlock, type Block } from '../markdown';
 import { FS, MONO, UI } from '../theme';
 import { PRI, splitPriMark } from '../vault';
@@ -6,6 +6,7 @@ import { filesFromClipboard, isImage, mayHoldFiles, saveIncoming, useAssets, vau
 import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
 import { AttachmentChip, InlineText } from './InlineText';
 import { Check, ExternalIcon } from './icons';
+import { playDone } from '../sound';
 
 const P: CSSProperties = { fontSize: FS.body, lineHeight: 1.72, fontWeight: 400, margin: 0 };
 const TYPE: Record<string, CSSProperties> = {
@@ -17,12 +18,27 @@ const TYPE: Record<string, CSSProperties> = {
 
 type Caret = number | 'end' | null;
 
+/**
+ * The `- ` that starts a bullet line. It stays a bullet while the line is edited: the text box
+ * holds only what comes after it, so carets inside the editor count from the start of the line.
+ */
+const bulletOf = (src: string) => (parseBlock(src).type === 'li' ? src.match(/^\s*[-*]\s/)![0] : '');
+const Bullet = () => (
+  <span style={{ width: 22, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted)' }} /></span>
+);
+
 interface Props {
   blocks: string[];
   update: (fn: (L: string[]) => void) => void;
   isDaily: boolean;
   live: boolean;
   spell: boolean;
+  /** Show the priority dot of `!high` / `!low` checklist items. */
+  showPri: boolean;
+  /** Chime when a checklist item is checked. */
+  sound: boolean;
+  /** Changes when the caret should go to the start of the note (Enter in the title). */
+  focusStart?: number;
   onOpenLink: (name: string) => void;
   /** Start with the caret in the first block (a freshly created note). */
   autoFocus?: boolean;
@@ -32,7 +48,7 @@ interface Props {
   onAssetsAdded: (rels: string[]) => void;
 }
 
-export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoFocus, noteDir, onAssetsAdded }: Props) {
+export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, focusStart, onOpenLink, autoFocus, noteDir, onAssetsAdded }: Props) {
   const assets = useAssets();
   const [dropAt, setDropAt] = useState<number | null>(null);
 
@@ -76,16 +92,53 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
   const caret = useRef<Caret>(null);
   const onlyEmpty = blocks.length === 1 && blocks[0] === '';
 
+  useEffect(() => {
+    if (!focusStart) return;
+    caret.current = 0;
+    setSel(null);
+    setFocus(0);
+  }, [focusStart]);
+
   const taRef = useCallback((el: HTMLTextAreaElement | null) => {
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = el.scrollHeight + 'px';
     el.focus();
-    const c = caret.current;
-    const pos = c == null || c === 'end' ? el.value.length : Math.min(c, el.value.length);
+    const c = caret.current, off = Number(el.dataset.off || 0);
+    const pos = c == null || c === 'end' ? el.value.length : Math.max(0, Math.min(c - off, el.value.length));
     el.setSelectionRange(pos, pos);
     caret.current = null;
   }, []);
+
+  /**
+   * Whole lines selected with Shift+↑/↓ past the edge of a line (or Shift+click). Each line is its
+   * own text box, so a selection across lines is kept here and the editor handles its keys.
+   */
+  const [sel, setSel] = useState<{ anchor: number; head: number } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const selLo = sel ? Math.min(sel.anchor, sel.head) : -1, selHi = sel ? Math.max(sel.anchor, sel.head) : -1;
+  useEffect(() => { if (sel && document.activeElement !== root.current) root.current?.focus(); }, [sel]);
+  const selectLines = (anchor: number, head: number) => {
+    setFocus(null);
+    setSel({ anchor, head: Math.max(0, Math.min(blocks.length - 1, head)) });
+  };
+  const onSelKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!sel || e.target !== e.currentTarget) return;
+    const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    const replace = (text: string) => mutate(A => { A.splice(selLo, selHi - selLo + 1, text); }, selLo, text.length);
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.shiftKey) { e.preventDefault(); selectLines(sel.anchor, sel.head + (e.key === 'ArrowUp' ? -1 : 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(null); caret.current = 0; setFocus(selLo); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(null); caret.current = 'end'; setFocus(selHi); }
+    else if (e.key === 'Escape') { e.preventDefault(); setSel(null); }
+    else if (mod && k === 'a') { e.preventDefault(); selectLines(0, blocks.length - 1); }
+    else if (mod && (k === 'c' || k === 'x')) {
+      e.preventDefault();
+      window.journal.copyText(blocks.slice(selLo, selHi + 1).join('\n')).catch(() => {});
+      if (k === 'x') { setSel(null); replace(''); }
+    }
+    else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); setSel(null); replace(''); }
+    else if (e.key.length === 1 && !mod && !e.altKey) { e.preventDefault(); setSel(null); replace(e.key); }
+  };
 
   const mutate = (fn: (A: string[]) => void, nextFocus?: number | null, c: Caret = null) => {
     caret.current = c;
@@ -94,9 +147,26 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>, i: number) => {
-    const ta = e.currentTarget, pos = ta.selectionStart, end = ta.selectionEnd, val = ta.value;
+    const ta = e.currentTarget, bullet = bulletOf(blocks[i]), off = bullet.length;
+    // Positions count from the start of the line, bullet included.
+    const pos = ta.selectionStart + off, end = ta.selectionEnd + off, val = bullet + ta.value;
     const multi = val.startsWith('```') || val.startsWith('|');
     if (e.key === 'Escape') { e.preventDefault(); ta.blur(); setFocus(null); return; }
+    // Shift+↑/↓ select within the line first, then whole lines.
+    if (e.shiftKey && e.key === 'ArrowUp' && ta.selectionStart === 0 && (ta.selectionDirection !== 'forward' || ta.selectionEnd === 0)) {
+      e.preventDefault(); selectLines(i, i - 1); return;
+    }
+    if (e.shiftKey && e.key === 'ArrowDown' && ta.selectionEnd === ta.value.length && (ta.selectionDirection !== 'backward' || ta.selectionStart === ta.value.length)) {
+      e.preventDefault(); selectLines(i, i + 1); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && ta.selectionStart === 0 && ta.selectionEnd === ta.value.length && blocks.length > 1) {
+      e.preventDefault(); selectLines(0, blocks.length - 1); return;
+    }
+    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) return;
+    // Backspace at the start of a bullet's text turns it back into a plain line.
+    if (e.key === 'Backspace' && off && ta.selectionStart === 0 && ta.selectionEnd === 0) {
+      e.preventDefault(); mutate(A => { A[i] = ta.value; }, i, 0); return;
+    }
     if (e.key === 'Enter' && !e.shiftKey && !multi) {
       e.preventDefault();
       const before = val.slice(0, pos), after = val.slice(end);
@@ -129,7 +199,7 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
   };
 
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>, i: number) => {
-    const ta = e.currentTarget;
+    const ta = e.currentTarget, off = bulletOf(blocks[i]).length;
     const text = e.clipboardData.getData('text/plain').trim();
     const inCode = ta.value.startsWith('```') || ta.value.startsWith('|');
     if (text && isUrl(text) && !inCode && !insideLinkSyntax(ta.value.slice(0, ta.selectionStart))) {
@@ -143,7 +213,7 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
     if (inCode || !mayHoldFiles(e.clipboardData)) return;
     // Files (or what may be paths of copied files): check, then save them or paste the text after all.
     e.preventDefault();
-    const pos = ta.selectionStart, raw = e.clipboardData.getData('text/plain');
+    const pos = ta.selectionStart + off, raw = e.clipboardData.getData('text/plain');
     filesFromClipboard(e.clipboardData).then(items => {
       if (items?.length) return attach(items, i, ta, pos);
       if (!raw) return;
@@ -224,11 +294,13 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
         const { text, pri } = pb.type === 'task' ? splitPriMark(pb.text) : { text: pb.text, pri: null };
         return (
           <div style={{ display: 'flex', alignItems: 'flex-start', cursor: 'text', ...(TYPE[pb.type] || P), marginLeft: indent * 11 }}>
-            {pb.type === 'li' && (
-              <span style={{ width: 22, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted)' }} /></span>
-            )}
+            {pb.type === 'li' && <Bullet />}
             {pb.type === 'task' && (
-              <span data-link="1" onClick={e => { e.stopPropagation(); update(A => { A[i] = checked ? A[i].replace(/- \[[xX]\]/, '- [ ]') : A[i].replace('- [ ]', '- [x]'); }); }} style={{ width: 26, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <span data-link="1" onClick={e => {
+                e.stopPropagation();
+                if (!checked && sound) playDone();
+                update(A => { A[i] = checked ? A[i].replace(/- \[[xX]\]/, '- [ ]') : A[i].replace('- [ ]', '- [x]'); });
+              }} style={{ width: 26, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
                 <span style={{ width: 15, height: 15, boxSizing: 'border-box', borderRadius: 4, border: checked ? '1.5px solid var(--accent-fill)' : '1.5px solid var(--border-strong)', background: checked ? 'var(--accent-fill)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {checked && <Check />}
                 </span>
@@ -236,7 +308,7 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
             )}
             <span style={{ flex: 1, minWidth: 0, textWrap: 'pretty', color: checked ? 'var(--faint)' : undefined, textDecoration: checked ? 'line-through' : 'none' } as CSSProperties}>
               {tokens(text)}
-              {pri && pri !== 'm' && <span title={`${PRI[pri].label} priority`} style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: PRI[pri].color, marginLeft: 10, verticalAlign: 'middle', opacity: checked ? 0.45 : 1 }} />}
+              {showPri && pri && pri !== 'm' && <span title={`${PRI[pri].label} priority`} style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: PRI[pri].color, marginLeft: 10, verticalAlign: 'middle', opacity: checked ? 0.45 : 1 }} />}
             </span>
           </div>
         );
@@ -245,9 +317,10 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
   };
 
   return (
-    <div style={{ color: 'var(--text)' }} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={e => { if (e.currentTarget === e.target) setDropAt(null); }}>
+    <div ref={root} tabIndex={-1} onKeyDown={onSelKey} onBlur={e => { if (e.target === e.currentTarget) setSel(null); }}
+      style={{ color: 'var(--text)', outline: 'none' }} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={e => { if (e.currentTarget === e.target) setDropAt(null); }}>
       {blocks.map((src, i) => {
-        const pb = parseBlock(src), editing = focus === i;
+        const pb = parseBlock(src), editing = focus === i, bullet = editing ? bulletOf(src) : '';
         let body;
         if (editing) {
           const multi = pb.type === 'code' || pb.type === 'table';
@@ -257,17 +330,29 @@ export function Editor({ blocks, update, isDaily, live, spell, onOpenLink, autoF
           if (pb.type === 'image') Object.assign(style, { fontFamily: MONO, fontSize: FS.ui, margin: '16px 0' });
           body = (
             <textarea
-              ref={taRef} value={src} rows={1} spellCheck={spell} style={style}
+              ref={taRef} value={src.slice(bullet.length)} data-off={bullet.length} rows={1} spellCheck={spell} style={style}
               placeholder={onlyEmpty ? (isDaily ? 'How did today go? Markdown renders as you type.' : 'Start writing…') : ''}
-              onChange={e => { const el = e.target; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; const v = el.value; update(A => { A[i] = v; }); }}
+              onChange={e => {
+                const el = e.target; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px';
+                const v = bullet + el.value;
+                // Typing `- ` makes a bullet (or `[ ] ` after it a checkbox): the text box is
+                // replaced, so tell the new one where the caret is.
+                if (bulletOf(v) !== bullet) caret.current = bullet.length + el.selectionStart;
+                update(A => { A[i] = v; });
+              }}
               onKeyDown={e => onKey(e, i)}
               onBlur={() => setFocus(f => (f === i ? null : f))}
               onPaste={e => onPaste(e, i)}
             />
           );
+          if (bullet) body = <div style={{ display: 'flex', alignItems: 'flex-start', marginLeft: (bullet.length - 2) * 11 }}><Bullet />{body}</div>;
         } else body = renderBlock(src, pb, i);
+        const selected = i >= selLo && i <= selHi;
         return (
-          <div key={i} data-bi={i} className={dropAt === i ? 'drop-target' : undefined} style={{ position: 'relative' }} onMouseDown={e => {
+          <div key={i} data-bi={i} className={[dropAt === i && 'drop-target', selected && 'line-selected'].filter(Boolean).join(' ') || undefined} style={{ position: 'relative' }} onMouseDown={e => {
+            // Shift+click selects whole lines, from the line being edited (or selected) to this one.
+            if (e.shiftKey && (focus !== null || sel)) { e.preventDefault(); selectLines(sel ? sel.anchor : focus!, i); return; }
+            setSel(null);
             if ((e.target as HTMLElement).closest('[data-link]') || editing) return;
             e.preventDefault(); caret.current = 'end'; setFocus(i);
           }}>{body}</div>

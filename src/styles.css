@@ -37,10 +37,9 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border: 3px solid transparent; border-radius: 999px; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--faint); }
 
-/* Folder rows show their create buttons on hover, in place of the note count. */
+/* Folder rows show their create buttons on hover, next to the note count. */
 .side-actions { display: none !important; }
 .side-row:hover .side-actions { display: flex !important; }
-.side-row:hover .side-meta { display: none; }
 
 /* Copy button on inline code, shown on hover (and briefly after copying). */
 .code-copy { display: none; align-items: center; justify-content: center; width: 16px; height: 16px; margin: 0 -2px 0 4px; padding: 0; border: none; border-radius: 3px; background: transparent; color: var(--muted); cursor: pointer; vertical-align: -2px; }
@@ -71,3 +70,7 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 .side-resize { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 5; touch-action: none; }
 .side-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background .12s; }
 .side-resize:hover::after, .side-resize.dragging::after { background: var(--accent); }
+
+/* Whole lines selected in the editor with Shift+arrows or Shift+click. */
+.line-selected { background: var(--accent-soft); border-radius: 4px; }
+.line-selected + .line-selected { border-top-left-radius: 0; border-top-right-radius: 0; }

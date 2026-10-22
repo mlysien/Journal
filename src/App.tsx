@@ -5,12 +5,15 @@ import { FS, MONO, themeStyle, UI, type Theme, type ThemePref } from './theme';
 import { dailyName, dateFromName } from './dailyFormat';
 import { AssetContext, makeAssets } from './assets';
 import {
-  addFolder, dailyDates, dailyFile, dailyTaskItems, folderPath, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
-  type Loaded, type Pri, type Prefs, type TabId,
+  addFolder, dailyDates, dailyFile, dailyTaskItems, folderPath, moveFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
+  type Loaded, type Pri, type Prefs, type ShortcutId, type TabId,
 } from './vault';
+import { keyName } from './keys';
+import { playDone } from './sound';
+import { useUpdate } from './update';
 import { Editor } from './components/Editor';
 import { Search } from './components/Search';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, type DeleteTarget } from './components/Sidebar';
 import { SettingsPage } from './components/SettingsPage';
 import { PastTasks, TodayTasks, type TaskActions } from './components/Tasks';
 import { ChevronLeft, ChevronRight, Close, Plus, SidebarIcon } from './components/icons';
@@ -37,12 +40,16 @@ const TITLE_BAR = {
 };
 
 export function App({ initial }: { initial: Loaded }) {
-  const { today, vault, update, ui, setUi, saveError, save } = useVault(initial);
+  const { today, vault, update, ui, setUi, saveError, save, trash } = useVault(initial);
   /** A note just created, and whether its title or its body should get the caret. */
   const [justCreated, setJustCreated] = useState<{ id: string; focus: 'title' | 'body' } | null>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const { prefs } = vault;
+  const upd = useUpdate();
+  /** The update banner can be dismissed until the next version comes along. */
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const banner = (upd.state === 'ready' || upd.state === 'available') && dismissed !== upd.version ? upd : null;
 
   const items = useMemo(() => dailyTaskItems(vault, today), [vault, today]);
   const dates = useMemo(() => dailyDates(vault, today), [vault, today]);
@@ -54,19 +61,32 @@ export function App({ initial }: { initial: Loaded }) {
 
   useEffect(() => { scroller.current?.scrollTo(0, 0); }, [active]);
 
-  /* ---------- search ---------- */
+  /* ---------- search and keyboard shortcuts ---------- */
 
   const [searching, setSearching] = useState(false);
   /** A block to scroll to and flash once its note is showing. */
   const [jump, setJump] = useState<{ tab: TabId; block: number } | null>(null);
+  /** Tabs closed this session, most recent last, for reopening. */
+  const closed = useRef<TabId[]>([]);
+  /** Bumped by Enter in a note's title, to move the caret into the note. */
+  const [focusStart, setFocusStart] = useState(0);
+  const shortcut = useRef<(id: ShortcutId) => void>(() => {});
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // While a shortcut is being recorded in Settings, keys go to it.
+      if ((e.target as HTMLElement | null)?.closest?.('[data-recording]')) return;
       const k = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && (k === 'k' || (e.shiftKey && k === 'f'))) { e.preventDefault(); setSearching(s => !s); }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && k === 'f') { e.preventDefault(); setSearching(s => !s); return; }
+      const name = keyName(e);
+      if (!name) return;
+      const id = (Object.keys(latestKeys.current) as ShortcutId[]).find(s => latestKeys.current[s] === name);
+      if (id) { e.preventDefault(); e.stopPropagation(); shortcut.current(id); }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
+  const latestKeys = useRef(prefs.keys);
+  latestKeys.current = prefs.keys;
   useEffect(() => {
     if (!jump || jump.tab !== active) return;
     const id = requestAnimationFrame(() => {
@@ -97,10 +117,20 @@ export function App({ initial }: { initial: Loaded }) {
     if (id !== 'note:' + justCreated?.id) setJustCreated(null);
     setUi(u => ({ ...u, tabs: u.tabs.includes(id) ? u.tabs : [...u.tabs, id], active: id }));
   };
-  const closeTab = (id: TabId) => setUi(u => {
-    const live = u.tabs.filter(validTab), i = live.indexOf(id), rest = live.filter(t => t !== id);
-    return { ...u, tabs: rest, active: u.active === id ? rest[Math.min(i, rest.length - 1)] ?? null : u.active };
-  });
+  const closeTab = (id: TabId) => {
+    closed.current = [...closed.current.filter(t => t !== id), id].slice(-30);
+    setUi(u => {
+      const live = u.tabs.filter(validTab), i = live.indexOf(id), rest = live.filter(t => t !== id);
+      return { ...u, tabs: rest, active: u.active === id ? rest[Math.min(i, rest.length - 1)] ?? null : u.active };
+    });
+  };
+  /** Opens the most recently closed tab that still exists and isn't open. */
+  const reopenTab = () => {
+    while (closed.current.length) {
+      const id = closed.current.pop()!;
+      if (validTab(id) && !tabs.includes(id)) { openTab(id); return; }
+    }
+  };
   const newNote = (title = 'Untitled', folder: string | null = null, focus: 'title' | 'body' = 'title') => {
     const id = notePath(vault, folder, title);
     update(v => ({ ...v, notes: { ...v.notes, [id]: { id, path: id, title, folder, blocks: [''] } } }));
@@ -116,11 +146,32 @@ export function App({ initial }: { initial: Loaded }) {
     if (hit) openTab('note:' + hit.id); else newNote(name, null, 'body');
   };
   const openToday = () => openTab('daily:' + today);
+  shortcut.current = id => {
+    if (id === 'today') openToday();
+    else if (id === 'search') setSearching(s => !s);
+    else if (id === 'newNote') newNote();
+    else if (id === 'closeTab') { if (active) closeTab(active); }
+    else if (id === 'reopenTab') reopenTab();
+    else if (id === 'sidebar') setUi(u => ({ ...u, sidebarHidden: !u.sidebarHidden }));
+  };
 
+  /* ---------- sidebar: delete, icons, folder order ---------- */
+
+  const deleteItem = (t: DeleteTarget) => {
+    const what = t.kind === 'folder' ? `the folder “${t.label}” and everything in it` : `“${t.label}”`;
+    if (!confirm(`Move ${what} to the trash?`)) return;
+    const done = t.kind === 'folder' ? trash(t.path, v => removeFolder(v, t.path))
+      : t.kind === 'daily' ? trash(dailyFile(vault, t.date), v => removeDaily(v, t.date))
+      : trash(vault.notes[t.id].path, v => { const notes = { ...v.notes }; const icons = { ...v.icons }; delete icons['n:' + notes[t.id].path]; delete notes[t.id]; return { ...v, notes, icons }; });
+    done.catch(err => alert(`Could not delete ${t.label}.\n${err instanceof Error ? err.message : err}`));
+  };
   /* ---------- tasks ---------- */
 
   const actions: TaskActions = {
-    toggle: t => update(v => ({ ...v, tasks: v.tasks.map(x => x.id !== t.id ? x : x.done ? { ...x, done: false, doneOn: undefined, day: today } : { ...x, done: true, doneOn: today }) })),
+    toggle: t => {
+      if (!t.done && prefs.sound) playDone();
+      update(v => ({ ...v, tasks: v.tasks.map(x => x.id !== t.id ? x : x.done ? { ...x, done: false, doneOn: undefined, day: today } : { ...x, done: true, doneOn: today }) }));
+    },
     setPri: (t, pri) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, pri } : x)) })),
     remove: t => update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) })),
     openLink: name => openByTitle(name),
@@ -128,7 +179,7 @@ export function App({ initial }: { initial: Loaded }) {
     relink: (draft, final) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.title.includes(draft) ? { ...x, title: x.title.replace(draft, final) } : x)) })),
   };
   const addTask = (title: string, pri: Pri) =>
-    update(v => ({ ...v, tasks: [{ id: uid(), title, pri, createdOn: today, carried: 0, day: today }, ...v.tasks] }));
+    update(v => ({ ...v, tasks: [...v.tasks, { id: uid(), title, pri, createdOn: today, carried: 0, day: today }] }));
 
   const tasksOn = (d: string) => ({
     open: items.filter(t => !t.done && dailyById.get(t.id)?.day === d).sort(sorter('priority')),
@@ -171,6 +222,7 @@ export function App({ initial }: { initial: Loaded }) {
   else if (note) { statusLeft = note.path; statusRight = `${words} words · Markdown · ${saved}`; }
 
   const todayTasks = tasksOn(today);
+  const show = { pri: prefs.showPri, age: prefs.showAge, carried: prefs.showCarried };
 
   return (
     <div style={{ height: '100%', ...themeStyle(theme, prefs.accent) }}>
@@ -206,7 +258,9 @@ export function App({ initial }: { initial: Loaded }) {
           {!ui.sidebarHidden && (
             <Sidebar vault={vault} ui={{ ...ui, active }} setUi={setUi} today={today} dates={dates}
               zoom={TEXT_ZOOM[prefs.textScale]} todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)}
-              onNewNote={folder => newNote('Untitled', folder)} onNewFolder={newFolder} />
+              onNewNote={folder => newNote('Untitled', folder)} onNewFolder={newFolder} onDelete={deleteItem}
+              onIcon={(key, choice) => update(v => { const icons = { ...v.icons }; if (choice) icons[key] = choice; else delete icons[key]; return { ...v, icons }; })}
+              onMoveFolder={(parent, siblings, name, before) => update(v => moveFolder(v, parent, siblings, name, before))} />
           )}
 
           <AssetContext.Provider value={assets}>
@@ -242,16 +296,24 @@ export function App({ initial }: { initial: Loaded }) {
                     <>
                       <input ref={titleInput} value={note.title} placeholder="Untitled" spellCheck={false}
                         onChange={e => { const title = e.target.value; update(v => renameNote(v, note.id, title)); }}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); setFocusStart(n => n + 1); } }}
                         style={{ ...H1, display: 'block', width: '100%', padding: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'inherit' }} />
                       <div style={{ fontSize: FS.md, color: 'var(--muted)' }}>{words} words</div>
                       <div style={{ height: 26 }} />
                     </>
                   )}
 
-                  {date === today && <TodayTasks rows={todayTasks.open.concat(todayTasks.done)} actions={actions} showMeta={prefs.meta} onAdd={addTask} />}
-                  {date && date < today && (() => { const p = tasksOn(date); return <PastTasks open={p.open} done={p.done} actions={actions} showMeta={prefs.meta} onOpenToday={openToday} />; })()}
+                  {date === today && <TodayTasks rows={todayTasks.open.concat(todayTasks.done)} actions={actions} show={show} onAdd={addTask} />}
+                  {date && date < today && (() => { const p = tasksOn(date); return <PastTasks open={p.open} done={p.done} actions={actions} show={show} onOpenToday={openToday} />; })()}
+                  {date && (
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, paddingBottom: 10, marginBottom: 14, borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: FS.ui, fontWeight: 600, color: 'var(--text)' }}>Notes</span>
+                      <span style={{ fontSize: FS.sm, color: 'var(--faint)' }}>{words ? `${words} word${words === 1 ? '' : 's'}` : 'Nothing written yet'}</span>
+                    </div>
+                  )}
 
                   <Editor key={active} blocks={blocks} update={updateDoc} isDaily={!!date} live={prefs.live} spell={prefs.spell}
+                    showPri={prefs.showPri} sound={prefs.sound} focusStart={focusStart}
                     onOpenLink={openByTitle} autoFocus={!!note && justCreated?.id === note.id && justCreated.focus === 'body'}
                     noteDir={noteDir} onAssetsAdded={addAssets} />
                 </div>
@@ -284,6 +346,20 @@ export function App({ initial }: { initial: Loaded }) {
               )}
             </div>
 
+            {banner && (
+              <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px 8px 16px', borderTop: '1px solid var(--border)', background: 'var(--accent-soft)', fontSize: FS.ui, color: 'var(--text)' }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  {banner.state === 'ready' ? `Journal ${banner.version} is ready. It installs when you restart, or close the app.` : `Journal ${banner.version} is available.`}
+                </span>
+                <button className="btn-outline" onClick={async () => {
+                  if (banner.state === 'ready') { await save(); window.journal.installUpdate(); }
+                  else window.journal.openExternal(banner.url);
+                }} style={{ border: '1px solid var(--border-strong)', background: 'var(--elev)', color: 'var(--text)', font: 'inherit', fontSize: FS.ui, padding: '4px 12px', borderRadius: 7, cursor: 'pointer' }}>
+                  {banner.state === 'ready' ? 'Restart now' : 'Download'}
+                </button>
+                <button onClick={() => setDismissed(banner.version)} title="Not now" className="hov-text-active" style={iconBtn}><Close /></button>
+              </div>
+            )}
             <div style={{ height: 28, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '0 16px', fontSize: FS.sm, color: saveError ? 'var(--pri-h)' : 'var(--faint)', borderTop: '1px solid var(--border)' }}>
               <span style={{ fontFamily: MONO, fontSize: FS.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--faint)' }}>{statusLeft}</span>
               <span style={{ whiteSpace: 'nowrap' }}>{statusRight}</span>

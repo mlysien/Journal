@@ -1,8 +1,10 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, protocol, shell } from 'electron';
-import { promises as fs } from 'node:fs';
+import { readFileSync, promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { VaultSnapshot, VaultSync } from './api';
+import { setupUpdates } from './updater';
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
 const STATE_FILE = '.journal/state.json';
@@ -117,6 +119,14 @@ ipcMain.handle('fs:existingFiles', async (_e, candidates: string[]) => {
   return out;
 });
 
+ipcMain.handle('vault:trash', async (_e, p: string) => {
+  const abs = inVault(p);
+  if (abs === root) throw new Error('Refusing to delete the vault');
+  // A note or folder made a moment ago may not be on disk yet.
+  try { await fs.access(abs); } catch { return; }
+  await shell.trashItem(abs);
+});
+
 ipcMain.handle('vault:mkdir', async (_e, p: string) => { await fs.mkdir(inVault(p), { recursive: true }); });
 
 ipcMain.handle('vault:choose', async e => {
@@ -174,17 +184,70 @@ ipcMain.handle('link:title', async (_e, url: string): Promise<string | null> => 
   }
 });
 
+ipcMain.on('app:version', e => { e.returnValue = app.getVersion(); });
+
 ipcMain.handle('clipboard:write', (_e, text: string) => { clipboard.writeText(String(text)); });
 
 ipcMain.on('window:titleBar', (e, colors: { color: string; symbolColor: string }) => {
   BrowserWindow.fromWebContents(e.sender)?.setTitleBarOverlay({ ...colors, height: TITLE_BAR_HEIGHT });
 });
 
+/* ---------- start at login ---------- */
+
+// Windows and macOS have a login items API; on Linux it's an XDG autostart entry.
+const autostartFile = () => path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'journal.desktop');
+/** The command that starts this app: the AppImage when run from one, otherwise the binary (plus the app folder in development). */
+const launchCommand = () => {
+  const q = (s: string) => `"${s.replace(/(["`$\\])/g, '\\$1')}"`;
+  if (process.env.APPIMAGE) return q(process.env.APPIMAGE);
+  return app.isPackaged ? q(process.execPath) : `${q(process.execPath)} ${q(app.getAppPath())}`;
+};
+
+ipcMain.handle('app:getAutostart', async () => {
+  if (process.platform !== 'linux') return app.getLoginItemSettings().openAtLogin;
+  try { await fs.access(autostartFile()); return true; } catch { return false; }
+});
+
+ipcMain.handle('app:setAutostart', async (_e, on: boolean) => {
+  if (process.platform !== 'linux') { app.setLoginItemSettings({ openAtLogin: on }); return; }
+  if (!on) { await fs.rm(autostartFile(), { force: true }); return; }
+  await fs.mkdir(path.dirname(autostartFile()), { recursive: true });
+  await fs.writeFile(autostartFile(), ['[Desktop Entry]', 'Type=Application', 'Name=Journal', 'Comment=Markdown journal with daily notes and tasks', `Exec=${launchCommand()}`, 'Icon=journal', 'X-GNOME-Autostart-enabled=true', ''].join('\n'));
+});
+
+/* ---------- splash screen ---------- */
+
+/** A small window shown at once, like JetBrains IDEs do, while the app and the vault load. */
+function createSplash(dark: boolean): BrowserWindow {
+  let icon = '';
+  try { icon = 'data:image/png;base64,' + readFileSync(path.join(__dirname, '../build/icon.png')).toString('base64'); } catch { /* no icon */ }
+  const [bg, fg, sub, track, bar] = dark ? ['#1d1d1f', '#dddde0', '#8e8e95', '#2c2c30', '#8e8e95'] : ['#fcfcfb', '#252529', '#6f6f77', '#e7e7e4', '#6f6f77'];
+  const html = `<!doctype html><meta charset="utf-8"><style>
+    html,body{margin:0;height:100%;background:${bg};color:${fg};font:14px 'Segoe UI',system-ui,sans-serif;-webkit-user-select:none;cursor:default;overflow:hidden}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;box-sizing:border-box;border:1px solid ${track}}
+    img{width:72px;height:72px}
+    h1{margin:0;font-size:22px;font-weight:600;letter-spacing:-.02em}
+    p{margin:-8px 0 0;color:${sub};font-size:12px}
+    .t{position:absolute;left:0;right:0;bottom:0;height:3px;background:${track};overflow:hidden}
+    .t i{position:absolute;top:0;bottom:0;width:30%;background:${bar};animation:s 1.2s ease-in-out infinite}
+    @keyframes s{from{left:-30%}to{left:100%}}
+  </style>${icon ? `<img src="${icon}">` : ''}<h1>Journal</h1><p>Opening your vault…</p><div class="t"><i></i></div>`;
+  const splash = new BrowserWindow({
+    width: 380, height: 240, frame: false, resizable: false, movable: true, show: false, skipTaskbar: false,
+    backgroundColor: bg, title: 'Journal', icon: path.join(__dirname, '../build/icon.png'),
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+  });
+  splash.once('ready-to-show', () => splash.show());
+  splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  return splash;
+}
+
 /* ---------- window ---------- */
 
 function createWindow() {
   // Until the app has loaded its theme setting, match the OS so a light setup doesn't flash dark.
   const dark = nativeTheme.shouldUseDarkColors;
+  const splash = createSplash(dark);
   const win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 900, minHeight: 560,
     title: 'Journal',
@@ -203,7 +266,19 @@ function createWindow() {
     },
   });
   win.setMenu(null);
-  win.once('ready-to-show', () => win.show());
+  // The main window appears once the app has rendered the vault; the splash screen covers the wait.
+  let shown = false;
+  const reveal = () => {
+    if (shown || win.isDestroyed()) return;
+    shown = true;
+    win.show();
+    if (!splash.isDestroyed()) splash.destroy();
+  };
+  const onReady = (e: Electron.IpcMainEvent) => { if (e.sender === win.webContents) reveal(); };
+  ipcMain.on('app:ready', onReady);
+  win.on('closed', () => ipcMain.removeListener('app:ready', onReady));
+  win.webContents.once('did-fail-load', reveal);
+  setTimeout(reveal, 15000);
 
   // Give the renderer a moment to write unsaved edits before the window goes away.
   let flushed = false;
@@ -256,6 +331,6 @@ else {
     const win = BrowserWindow.getAllWindows()[0];
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
   });
-  app.whenReady().then(() => { serveVault(); createWindow(); });
+  app.whenReady().then(() => { serveVault(); createWindow(); setupUpdates(); });
   app.on('window-all-closed', () => app.quit());
 }

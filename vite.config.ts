@@ -11,5 +11,6 @@ const csp = (): Plugin => ({
 export default defineConfig({
   base: './',
   plugins: [react(), csp()],
-  server: { port: 5173, strictPort: true },
+  // Packaging writes into release/; without this the dev window reloads while it does.
+  server: { port: 5173, strictPort: true, watch: { ignored: ['**/release/**', '**/dist-electron/**'] } },
 });

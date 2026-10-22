@@ -18,6 +18,9 @@ export interface TaskActions {
   rename?: (t: TaskItem, title: string) => void;
 }
 
+/** Which details task rows show next to their titles. */
+export interface TaskShow { pri: boolean; age: boolean; carried: boolean }
+
 /** Which task's priority menu is open; closes on any mousedown outside a menu. */
 export function usePriMenu() {
   const [open, setOpen] = useState<string | null>(null);
@@ -126,10 +129,10 @@ function PriMenu({ t, onPick, style }: { t: TaskItem; onPick: (p: Pri) => void; 
 interface ListProps {
   rows: TaskItem[];
   actions: TaskActions;
-  showMeta: boolean;
+  show: TaskShow;
 }
 
-export function DailyTaskRow({ t, actions, showMeta, menu, setMenu }: { t: TaskItem; actions: TaskActions; showMeta: boolean; menu: string | null; setMenu: ReturnType<typeof usePriMenu>[1] }) {
+export function DailyTaskRow({ t, actions, show, menu, setMenu }: { t: TaskItem; actions: TaskActions; show: TaskShow; menu: string | null; setMenu: ReturnType<typeof usePriMenu>[1] }) {
   const tone = toneOf(t), carried = t.carried ?? 0, menuOpen = menu === t.id;
   return (
     <div data-row="1" tabIndex={0} className="task-row" onKeyDown={e => rowKey(e, t, actions, setMenu)}
@@ -139,15 +142,15 @@ export function DailyTaskRow({ t, actions, showMeta, menu, setMenu }: { t: TaskI
       </button>
       <TaskTitle t={t} actions={actions} style={titleStyle(t)} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: FS.sm, color: tone ? 'var(--warm)' : 'var(--faint)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>
-        {showMeta && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
-        {showMeta && <span title={createdTitle(t)} style={{ minWidth: 50, textAlign: 'right' }}>{t.done ? 'done' : t.age === 0 ? 'today' : `${t.age}d old`}</span>}
-        <span data-primenu="1" style={{ position: 'relative', display: 'flex' }}>
+        {show.carried && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
+        {show.age && <span title={createdTitle(t)} style={{ minWidth: 50, textAlign: 'right' }}>{t.done ? 'done' : t.age === 0 ? 'today' : `${t.age}d old`}</span>}
+        {show.pri && <span data-primenu="1" style={{ position: 'relative', display: 'flex' }}>
           <button className="hov-active" onClick={e => { e.stopPropagation(); setMenu(m => (m === t.id ? null : t.id)); }} title={`${PRI[t.pri].label} priority. Click to change`}
             style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: menuOpen ? 'var(--active)' : 'transparent', padding: 0, borderRadius: 5, cursor: 'pointer' }}>
             <span style={dot(t.pri, t.done)} />
           </button>
           {menuOpen && <PriMenu t={t} style={{ right: -4, top: 26 }} onPick={p => { actions.setPri(t, p); setMenu(() => null); }} />}
-        </span>
+        </span>}
         {actions.remove && (
           <button className="del-btn" onClick={e => { e.stopPropagation(); actions.remove!(t); }} title="Delete task"
             style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--faint)', padding: 0, borderRadius: 5, cursor: 'pointer' }}>
@@ -159,7 +162,7 @@ export function DailyTaskRow({ t, actions, showMeta, menu, setMenu }: { t: TaskI
   );
 }
 
-export function TodayTasks({ rows, actions, showMeta, onAdd }: ListProps & { onAdd: (title: string, pri: Pri) => void }) {
+export function TodayTasks({ rows, actions, show, onAdd }: ListProps & { onAdd: (title: string, pri: Pri) => void }) {
   const [menu, setMenu] = usePriMenu();
   const [qa, setQa] = useState('');
   const [qaPri, setQaPri] = useState<Pri>('m');
@@ -179,7 +182,17 @@ export function TodayTasks({ rows, actions, showMeta, onAdd }: ListProps & { onA
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', margin: '8px -10px 4px', borderRadius: 8, border: qaFocus ? '1px solid var(--border-strong)' : '1px solid transparent', background: qaFocus ? 'var(--elev)' : 'transparent' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>
+        {rows.map(t => <DailyTaskRow key={t.id} t={t} actions={actions} show={show} menu={menu} setMenu={setMenu} />)}
+      </div>
+
+      {rows.length === 0 && (
+        <div style={{ padding: '20px 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: FS.lg, color: 'var(--text-2)', fontWeight: 500 }}>All clear for today</span>
+          <span style={{ fontSize: FS.ui, color: 'var(--muted)', lineHeight: 1.55 }}>Anything you add and leave unchecked carries over to tomorrow on its own.</span>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', margin: '4px -10px 0', borderRadius: 8, border: qaFocus ? '1px solid var(--border-strong)' : '1px solid transparent', background: qaFocus ? 'var(--elev)' : 'transparent' }}>
         <span style={{ width: 16, display: 'flex', justifyContent: 'center', color: qaFocus ? 'var(--accent)' : 'var(--faint)', flex: 'none' }}><Plus /></span>
         <input value={qa} onChange={e => setQa(e.target.value)} placeholder="Add a task for today" spellCheck={false}
           onPaste={e => {
@@ -192,7 +205,7 @@ export function TodayTasks({ rows, actions, showMeta, onAdd }: ListProps & { onA
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } else if (e.key === 'Escape') { setQa(''); e.currentTarget.blur(); } }}
           onFocus={() => setQaFocus(true)} onBlur={() => setQaFocus(false)}
           style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontFamily: 'inherit', fontSize: FS.lg, lineHeight: 1.5, padding: 0 }} />
-        {qaActive && (
+        {qaActive && show.pri && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {(['h', 'm', 'l'] as const).map(k => (
               <button key={k} title={`${PRI[k].label} priority`} onMouseDown={e => { e.preventDefault(); setQaPri(k); }}
@@ -204,24 +217,13 @@ export function TodayTasks({ rows, actions, showMeta, onAdd }: ListProps & { onA
           </div>
         )}
       </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {rows.map(t => <DailyTaskRow key={t.id} t={t} actions={actions} showMeta={showMeta} menu={menu} setMenu={setMenu} />)}
-      </div>
-
-      {rows.length === 0 && (
-        <div style={{ padding: '28px 0 20px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: FS.lg, color: 'var(--text-2)', fontWeight: 500 }}>All clear for today</span>
-          <span style={{ fontSize: FS.ui, color: 'var(--muted)', lineHeight: 1.55 }}>Anything you add and leave unchecked carries over to tomorrow on its own.</span>
-        </div>
-      )}
     </section>
   );
 }
 
 /* ---------- a past day ---------- */
 
-export function PastTasks({ done, open, actions, showMeta, onOpenToday }: { done: TaskItem[]; open: TaskItem[]; actions: TaskActions; showMeta: boolean; onOpenToday: () => void }) {
+export function PastTasks({ done, open, actions, show, onOpenToday }: { done: TaskItem[]; open: TaskItem[]; actions: TaskActions; show: TaskShow; onOpenToday: () => void }) {
   return (
     <section data-bi="tasks" style={{ margin: '36px 0 40px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingBottom: 10, borderBottom: '1px solid var(--border)', marginBottom: 6 }}>
@@ -248,9 +250,9 @@ export function PastTasks({ done, open, actions, showMeta, onOpenToday }: { done
               </button>
               <TaskTitle t={t} actions={t.done ? { ...actions, rename: undefined } : actions} style={titleStyle(t)} />
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: FS.sm, color: 'var(--faint)', flex: 'none' }}>
-                {showMeta && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
+                {show.carried && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
                 <span style={{ color: t.done ? 'var(--faint)' : 'var(--muted)' }}>{t.done ? 'done' : 'open'}</span>
-                <span style={{ width: 20, display: 'flex', justifyContent: 'center' }}><span style={dot(t.pri, t.done)} /></span>
+                {show.pri && <span style={{ width: 20, display: 'flex', justifyContent: 'center' }}><span style={dot(t.pri, t.done)} /></span>}
               </div>
             </div>
           );

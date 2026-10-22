@@ -18,8 +18,7 @@ jobs:
           - os: ubuntu-latest
             target: --linux
           - os: windows-latest
-            # The MSI summary stream only supports code page 1252, so "Łysień" can't be used as Manufacturer.
-            target: --win "-c.extraMetadata.author.name=Mateusz Lysien"
+            target: --win
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +38,8 @@ jobs:
 
       - run: npm run build
 
+      # --publish never: the release job below uploads everything at once. The latest*.yml files
+      # (and blockmaps) are what installed apps read to find and download updates.
       - name: Package
         run: npx electron-builder ${{ matrix.target }} --publish never
 
@@ -49,7 +50,9 @@ jobs:
           path: |
             release/*.AppImage
             release/*.deb
-            release/*.msi
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
 
   release:
     needs: build

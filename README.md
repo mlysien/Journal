@@ -29,7 +29,7 @@ Each day's tasks are saved in that day's note, in a `## Tasks` section at the to
 
 Daily notes are placed like in Obsidian's Daily notes plugin: a folder plus a date format with the same tokens (`YYYY`, `MM`, `DD`, `MMMM`, `Do`, `[text]`…), where `/` makes subfolders. The default is folder `Journal` with format `YYYY/MM/DD.MM.YYYY`. Change both in **Settings → Daily notes**; existing daily notes are moved to match. When you open an Obsidian vault for the first time, its `.obsidian/daily-notes.json` settings are used.
 
-A daily note file is created for each day automatically, when the app starts and at midnight. To create notes and folders, use the buttons next to **Files / Daily notes** in the sidebar, or hover over a folder to create something inside it.
+A daily note file is created for each day automatically, when the app starts and at midnight, and today's note becomes the open tab. To create notes and folders, use the buttons next to **Files / Daily notes** in the sidebar, or hover over a folder to create something inside it. Right-click a note or folder to give it an icon and colour, or to move it to the trash. Drag folders to change their order; it's kept in `.journal/state.json`.
 
 Paste or drag files into a note (screenshots, images, PDFs, files copied in your file manager) and they're saved in an `Attachments` folder next to the note and linked with a relative Markdown link. Images show inline; other files show as a paperclip chip that opens the file. Obsidian embeds like `![[image.png]]` are found by name anywhere in the vault.
 
@@ -50,10 +50,18 @@ Set `JOURNAL_VAULT=/some/folder` to open a different vault without touching your
 
 ```sh
 npm run dist:linux   # release/Journal-<version>.AppImage and release/journal_<version>_amd64.deb
-npm run dist:win     # release/Journal Setup <version>.exe
+npm run dist:win     # release/Journal-Setup-<version>.exe
 ```
 
 Build the Windows installer on Windows. On Linux, electron-builder needs Wine to finish the `.exe`.
+
+## Releases and updates
+
+Push a tag like `v0.2.0` and GitHub Actions builds the packages and publishes a GitHub release (`.github/workflows/release.yml`). The version comes from the tag.
+
+Installed apps check the latest release 10 seconds after starting and every 4 hours after that. The Windows installer and the AppImage download a new version in the background and install it when the app is closed, or right away with **Restart now** in the banner or in **Settings → System**. A `.deb` install can't replace itself, so it shows a banner with a link to the release instead.
+
+Updates are found through the `latest.yml` and `latest-linux.yml` files in the release, so keep them among its files. Releases marked as drafts or pre-releases are skipped.
 
 ## Keyboard
 
@@ -65,4 +73,14 @@ Build the Windows installer on Windows. On Linux, electron-builder needs Wine to
 | Focused task | Delete / Backspace | remove (daily tasks) |
 | Focused task | ↑ / ↓ | move between tasks |
 | Editor | Enter | new line, continuing lists and checkboxes |
+| Editor | Backspace at the start of a bullet | turn it back into a plain line |
+| Editor | Shift+↑ / ↓, Shift+click | select whole lines, then copy, cut, delete or type over them |
 | Editor | Esc | stop editing |
+| Note title | Enter | start writing the note |
+| Anywhere | Ctrl+D | open today's daily note |
+| Anywhere | Ctrl+K | search |
+| Anywhere | Ctrl+N | new note |
+| Anywhere | Ctrl+W / Ctrl+Shift+T | close tab / reopen the last closed tab |
+| Anywhere | Ctrl+\\ | show or hide the sidebar |
+
+The shortcuts under **Anywhere** can be changed in **Settings → Keyboard shortcuts**. **Settings → System → Start at login** opens Journal when you sign in (an autostart entry in `~/.config/autostart` on Linux, a login item on Windows).

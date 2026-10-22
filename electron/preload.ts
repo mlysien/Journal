@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { JournalApi } from './api';
+import type { JournalApi, UpdateStatus } from './api';
 
 const api: JournalApi = {
   platform: process.platform,
@@ -10,6 +10,7 @@ const api: JournalApi = {
   openAsset: rel => ipcRenderer.invoke('vault:openAsset', rel),
   pathForFile: file => webUtils.getPathForFile(file),
   existingFiles: candidates => ipcRenderer.invoke('fs:existingFiles', candidates),
+  trash: rel => ipcRenderer.invoke('vault:trash', rel),
   mkdir: rel => ipcRenderer.invoke('vault:mkdir', rel),
   chooseVault: () => ipcRenderer.invoke('vault:choose'),
   revealVault: () => ipcRenderer.invoke('vault:reveal'),
@@ -17,6 +18,18 @@ const api: JournalApi = {
   copyText: text => ipcRenderer.invoke('clipboard:write', text),
   fetchTitle: url => ipcRenderer.invoke('link:title', url),
   setTitleBar: colors => ipcRenderer.send('window:titleBar', colors),
+  getAutostart: () => ipcRenderer.invoke('app:getAutostart'),
+  setAutostart: on => ipcRenderer.invoke('app:setAutostart', on),
+  ready: () => ipcRenderer.send('app:ready'),
+  version: ipcRenderer.sendSync('app:version'),
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: fn => {
+    const on = (_e: unknown, s: UpdateStatus) => fn(s);
+    ipcRenderer.on('update:status', on);
+    return () => { ipcRenderer.removeListener('update:status', on); };
+  },
   onFlush: fn => {
     ipcRenderer.removeAllListeners('app:flush');
     ipcRenderer.on('app:flush', () => { fn().finally(() => ipcRenderer.send('app:flushed')); });

@@ -21,6 +21,8 @@ const api: JournalApi = {
   getAutostart: () => ipcRenderer.invoke('app:getAutostart'),
   setAutostart: on => ipcRenderer.invoke('app:setAutostart', on),
   ready: () => ipcRenderer.send('app:ready'),
+  notify: (title, body) => ipcRenderer.send('app:notify', title, body),
+  setProgress: fraction => ipcRenderer.send('window:progress', fraction),
   version: ipcRenderer.sendSync('app:version'),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),

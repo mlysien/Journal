@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, net, Notification, protocol, shell } from 'electron';
 import { readFileSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -263,6 +263,8 @@ function createWindow() {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: true,
+      // Keep timers on schedule while minimized, so a pomodoro ends on time.
+      backgroundThrottling: false,
     },
   });
   win.setMenu(null);
@@ -324,6 +326,25 @@ function serveVault() {
     }
   });
 }
+
+/* ---------- notifications and taskbar progress (the pomodoro timer) ---------- */
+
+// Windows shows notifications only for an app id that matches the installer's shortcut.
+if (process.platform === 'win32') app.setAppUserModelId('app.journal.desktop');
+
+ipcMain.on('app:notify', (e, title: string, body: string) => {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, silent: true });
+  n.on('click', () => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+  });
+  n.show();
+});
+
+ipcMain.on('window:progress', (e, fraction: number) => {
+  BrowserWindow.fromWebContents(e.sender)?.setProgressBar(fraction);
+});
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {

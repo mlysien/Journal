@@ -16,8 +16,9 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 .task-row:hover { background: var(--hover); }
 .task-row:focus { background: var(--hover); box-shadow: inset 0 0 0 1.5px var(--accent-ring); }
 .checkbox:hover { border-color: var(--accent) !important; }
-.del-btn { opacity: 0; }
-.task-row:hover .del-btn, .task-row:focus-within .del-btn { opacity: 1; }
+.del-btn, .pomo-btn { opacity: 0; }
+.task-row:hover .del-btn, .task-row:focus-within .del-btn, .task-row:hover .pomo-btn, .task-row:focus-within .pomo-btn { opacity: 1; }
+.pomo-btn:hover { color: var(--pri-h) !important; background: var(--active) !important; }
 .del-btn:hover { color: var(--text) !important; background: var(--active) !important; }
 
 .tab:hover { background: var(--hover); }

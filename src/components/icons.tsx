@@ -124,3 +124,18 @@ export const TrashIcon = () => (
 export const PaletteIcon = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2a6 6 0 0 0 0 12c.9 0 1.3-.6 1.3-1.2 0-.9-.8-1.2-.8-2 0-.7.5-1.1 1.2-1.1h1.6A2.7 2.7 0 0 0 14 6.9C14 4.2 11.3 2 8 2z" /><circle cx="5" cy="7" r=".6" /><circle cx="7.3" cy="4.7" r=".6" /><circle cx="10.4" cy="5" r=".6" /></svg>
 );
+export const TomatoIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4.3c-2.8 0-4.8 1.7-4.8 4.2S4.3 12.6 7 12.6s4.8-1.6 4.8-4.1S9.8 4.3 7 4.3z" /><path d="M7 4.3V1.9M4.6 3.7L7 4.3l2.4-.6" /></svg>
+);
+export const CupIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 5.5h7.5v3.2a3 3 0 0 1-3 3h-1.5a3 3 0 0 1-3-3V5.5z" /><path d="M10 6.5h.8a1.6 1.6 0 0 1 0 3.2H10M5 1.8v1.6M7.5 1.8v1.6" /></svg>
+);
+export const PlayIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M3.8 2.6v6.8a.5.5 0 0 0 .76.43l5.4-3.4a.5.5 0 0 0 0-.86l-5.4-3.4a.5.5 0 0 0-.76.43z" /></svg>
+);
+export const PauseIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="3" y="2.5" width="2.2" height="7" rx=".6" /><rect x="6.8" y="2.5" width="2.2" height="7" rx=".6" /></svg>
+);
+export const StopIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="3" y="3" width="6" height="6" rx="1.2" /></svg>
+);

@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } f
 import { fmt, parseIso, iso } from '../dates';
 import { FS, MONO } from '../theme';
 import { PRI, toneOf, type Pri, type TaskItem } from '../vault';
-import { Check, Close, Plus } from './icons';
+import { Check, Close, CupIcon, PauseIcon, PlayIcon, Plus, StopIcon, TomatoIcon } from './icons';
 import { InlineText } from './InlineText';
 import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
+import { clock, type Timer } from '../pomodoro';
 
 export interface TaskActions {
   toggle: (t: TaskItem) => void;
@@ -16,6 +17,8 @@ export interface TaskActions {
   relink?: (draft: string, final: string) => void;
   /** Changes a task's text. Without it, titles can't be edited. */
   rename?: (t: TaskItem, title: string) => void;
+  /** The pomodoro timer. Without it, rows have no timer button. */
+  timer?: Timer;
 }
 
 /** Which details task rows show next to their titles. */
@@ -38,6 +41,7 @@ function rowKey(e: KeyboardEvent<HTMLDivElement>, t: TaskItem, a: TaskActions, s
   if (e.key === ' ' || e.key === 'x') { e.preventDefault(); a.toggle(t); }
   else if (e.key === 'Enter' && a.rename) { e.preventDefault(); e.currentTarget.querySelector<HTMLElement>('[data-title]')?.click(); }
   else if (e.key === 'p') setMenu(m => (m === t.id ? null : t.id));
+  else if (e.key === 't' && a.timer) { if (a.timer.pomo?.taskId === t.id) a.timer.toggle(); else if (!t.done) a.timer.start(t.id, t.title); }
   else if (e.key === '1' || e.key === '2' || e.key === '3') { a.setPri(t, (['h', 'm', 'l'] as const)[+e.key - 1]); setMenu(() => null); }
   else if (e.key === 'Escape') setMenu(() => null);
   else if ((e.key === 'Backspace' || e.key === 'Delete') && a.remove) a.remove(t);
@@ -105,6 +109,37 @@ function TaskTitle({ t, actions, style }: { t: TaskItem; actions: TaskActions; s
   );
 }
 
+const smallBtn: CSSProperties = { width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--faint)', padding: 0, borderRadius: 5, cursor: 'pointer' };
+
+/** A task row's timer: a tomato that starts a pomodoro, or the running countdown with pause and stop. */
+function TaskTimer({ t, timer }: { t: TaskItem; timer: Timer }) {
+  const { pomo, left } = timer;
+  if (pomo?.taskId !== t.id) {
+    if (t.done) return null;
+    return (
+      <button className="pomo-btn" onClick={e => { e.stopPropagation(); timer.start(t.id, t.title); }} title={pomo ? 'Start a pomodoro on this task instead (T)' : 'Start a pomodoro (T)'} style={smallBtn}>
+        <TomatoIcon />
+      </button>
+    );
+  }
+  const paused = pomo.endsAt === null, brk = pomo.phase === 'break';
+  const waiting = paused && !brk && left === pomo.total;
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <button className="hov-active" onClick={e => { e.stopPropagation(); timer.toggle(); }}
+        title={waiting ? 'Start the next pomodoro (T)' : paused ? 'Resume (T)' : 'Pause (T)'}
+        style={{ display: 'flex', alignItems: 'center', gap: 5, height: 22, padding: '0 7px', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: MONO, fontSize: FS.sm, fontVariantNumeric: 'tabular-nums',
+          background: paused ? 'var(--hover)' : brk ? 'var(--accent-soft)' : 'color-mix(in oklch, var(--pri-h) 16%, transparent)',
+          color: paused ? 'var(--muted)' : brk ? 'var(--accent)' : 'var(--pri-h)' }}>
+        {brk ? <CupIcon /> : <TomatoIcon />}
+        {clock(left)}
+      </button>
+      <button className="hov-active" onClick={e => { e.stopPropagation(); timer.toggle(); }} title={paused ? 'Resume' : 'Pause'} style={smallBtn}>{paused ? <PlayIcon /> : <PauseIcon />}</button>
+      <button className="hov-active" onClick={e => { e.stopPropagation(); timer.stop(); }} title="Stop the timer" style={smallBtn}><StopIcon /></button>
+    </span>
+  );
+}
+
 const carryTitle = (n: number) => `Carried over ${n} time${n === 1 ? '' : 's'}`;
 const createdTitle = (t: TaskItem) => `Created ${fmt(t.createdOn, { month: 'short', day: 'numeric' })}`;
 
@@ -142,6 +177,7 @@ export function DailyTaskRow({ t, actions, show, menu, setMenu }: { t: TaskItem;
       </button>
       <TaskTitle t={t} actions={actions} style={titleStyle(t)} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: FS.sm, color: tone ? 'var(--warm)' : 'var(--faint)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>
+        {actions.timer && <TaskTimer t={t} timer={actions.timer} />}
         {show.carried && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
         {show.age && <span title={createdTitle(t)} style={{ minWidth: 50, textAlign: 'right' }}>{t.done ? 'done' : t.age === 0 ? 'today' : `${t.age}d old`}</span>}
         {show.pri && <span data-primenu="1" style={{ position: 'relative', display: 'flex' }}>

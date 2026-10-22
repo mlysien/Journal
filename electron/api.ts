@@ -64,6 +64,10 @@ export interface JournalApi {
   setAutostart(on: boolean): Promise<void>;
   /** Tells the main process the app has rendered, so the splash screen can go. */
   ready(): void;
+  /** Shows a system notification; clicking it brings the window forward. */
+  notify(title: string, body: string): void;
+  /** Progress in the taskbar button (0–1), or -1 to remove it. */
+  setProgress(fraction: number): void;
   version: string;
   updateStatus(): Promise<UpdateStatus>;
   checkForUpdates(): Promise<UpdateStatus>;

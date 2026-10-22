@@ -10,13 +10,14 @@ import {
 } from './vault';
 import { keyName } from './keys';
 import { playDone } from './sound';
+import { clock, usePomodoro } from './pomodoro';
 import { useUpdate } from './update';
 import { Editor } from './components/Editor';
 import { Search } from './components/Search';
 import { Sidebar, type DeleteTarget } from './components/Sidebar';
 import { SettingsPage } from './components/SettingsPage';
 import { PastTasks, TodayTasks, type TaskActions } from './components/Tasks';
-import { ChevronLeft, ChevronRight, Close, Plus, SidebarIcon } from './components/icons';
+import { ChevronLeft, ChevronRight, Close, CupIcon, PauseIcon, PlayIcon, Plus, SidebarIcon, StopIcon, TomatoIcon } from './components/icons';
 
 const iconBtn = { width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--muted)', borderRadius: 6, cursor: 'pointer', padding: 0 } as const;
 const navBtn = (disabled: boolean) => ({ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: 'var(--muted)', borderRadius: 6, cursor: disabled ? 'default' : 'pointer', padding: 0, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? 'none' : 'auto' } as const);
@@ -47,6 +48,7 @@ export function App({ initial }: { initial: Loaded }) {
   const scroller = useRef<HTMLDivElement>(null);
   const { prefs } = vault;
   const upd = useUpdate();
+  const timer = usePomodoro(prefs);
   /** The update banner can be dismissed until the next version comes along. */
   const [dismissed, setDismissed] = useState<string | null>(null);
   const banner = (upd.state === 'ready' || upd.state === 'available') && dismissed !== upd.version ? upd : null;
@@ -173,11 +175,16 @@ export function App({ initial }: { initial: Loaded }) {
       update(v => ({ ...v, tasks: v.tasks.map(x => x.id !== t.id ? x : x.done ? { ...x, done: false, doneOn: undefined, day: today } : { ...x, done: true, doneOn: today }) }));
     },
     setPri: (t, pri) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, pri } : x)) })),
-    remove: t => update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) })),
+    remove: t => {
+      if (timer.pomo?.taskId === t.id) timer.stop();
+      update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) }));
+    },
     openLink: name => openByTitle(name),
     rename: (t, title) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, title } : x)) })),
     relink: (draft, final) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.title.includes(draft) ? { ...x, title: x.title.replace(draft, final) } : x)) })),
+    timer,
   };
+  const pomo = timer.pomo, pomoTitle = pomo ? dailyById.get(pomo.taskId)?.title ?? pomo.title : '';
   const addTask = (title: string, pri: Pri) =>
     update(v => ({ ...v, tasks: [...v.tasks, { id: uid(), title, pri, createdOn: today, carried: 0, day: today }] }));
 
@@ -361,7 +368,21 @@ export function App({ initial }: { initial: Loaded }) {
               </div>
             )}
             <div style={{ height: 28, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '0 16px', fontSize: FS.sm, color: saveError ? 'var(--pri-h)' : 'var(--faint)', borderTop: '1px solid var(--border)' }}>
-              <span style={{ fontFamily: MONO, fontSize: FS.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--faint)' }}>{statusLeft}</span>
+              {pomo ? (
+                // The running pomodoro, visible from any tab; its task is on today's note.
+                <span style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, color: pomo.endsAt === null ? 'var(--muted)' : pomo.phase === 'break' ? 'var(--accent)' : 'var(--pri-h)' }}>
+                  <button onClick={openToday} title="Open today’s tasks" className="hov-active"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, height: 22, padding: '0 6px', margin: '0 0 0 -6px', border: 'none', borderRadius: 5, background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+                    {pomo.phase === 'break' ? <CupIcon /> : <TomatoIcon />}
+                    <span style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{clock(timer.left)}</span>
+                    <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pomo.phase === 'break' ? 'Break' : pomoTitle}</span>
+                  </button>
+                  <button onClick={timer.toggle} title={pomo.endsAt === null ? 'Resume' : 'Pause'} className="hov-text-active" style={{ ...iconBtn, width: 22, height: 22, color: 'var(--faint)' }}>{pomo.endsAt === null ? <PlayIcon /> : <PauseIcon />}</button>
+                  <button onClick={timer.stop} title="Stop the timer" className="hov-text-active" style={{ ...iconBtn, width: 22, height: 22, color: 'var(--faint)' }}><StopIcon /></button>
+                </span>
+              ) : (
+                <span style={{ fontFamily: MONO, fontSize: FS.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--faint)' }}>{statusLeft}</span>
+              )}
               <span style={{ whiteSpace: 'nowrap' }}>{statusRight}</span>
             </div>
           </main>

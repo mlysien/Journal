@@ -7,7 +7,7 @@ import { dailyPath, formatProblem, normalizeFolder } from '../dailyFormat';
 
 type Row =
   | { kind: 'seg'; label: string; desc: string; options: [string, string][]; value: string; set: (k: string) => void }
-  | { kind: 'toggle'; label: string; desc: string; key: 'carry' | 'showPri' | 'showAge' | 'showCarried' | 'sound' | 'live' | 'spell' }
+  | { kind: 'toggle'; label: string; desc: string; key: 'carry' | 'showPri' | 'showAge' | 'showCarried' | 'sound' | 'live' | 'spell' | 'pomoSound' }
   | { kind: 'switch'; label: string; desc: string; on: boolean; set: (on: boolean) => void }
   | { kind: 'shortcut'; label: string; desc: string; id: ShortcutId }
   | { kind: 'update'; label: string; desc: string }
@@ -120,6 +120,12 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
       { kind: 'toggle', key: 'showCarried', label: 'Show carry-over count', desc: 'Displays “↻ 3” next to tasks that moved to a new day.' },
       { kind: 'toggle', key: 'sound', label: 'Sound on completing a task', desc: 'A short chime when you check off a task.' },
       { kind: 'daily', label: 'Location and file names', desc: 'Where daily notes are saved. Existing daily notes are moved when you apply a change.' },
+    ] },
+    { label: 'Pomodoro', rows: [
+      { kind: 'seg', label: 'Focus', desc: 'Start a pomodoro with the tomato button on a task, or press T on a focused task.', options: [['15', '15 min'], ['25', '25 min'], ['45', '45 min'], ['50', '50 min']], value: String(prefs.pomoFocus), set: k => setPrefs({ pomoFocus: +k }) },
+      { kind: 'seg', label: 'Short break', desc: 'Starts on its own when a pomodoro ends.', options: [['5', '5 min'], ['10', '10 min']], value: String(prefs.pomoBreak), set: k => setPrefs({ pomoBreak: +k }) },
+      { kind: 'seg', label: 'Long break', desc: 'Instead of the short break after every fourth pomodoro on a task.', options: [['15', '15 min'], ['20', '20 min'], ['30', '30 min']], value: String(prefs.pomoLong), set: k => setPrefs({ pomoLong: +k }) },
+      { kind: 'toggle', key: 'pomoSound', label: 'Sound when time is up', desc: 'A bell at the end of each pomodoro and break, along with a notification.' },
     ] },
     { label: 'Editor', rows: [
       { kind: 'seg', label: 'Readable line length', desc: 'How wide notes can get. Shorter lines are easier to read.', options: [['narrow', 'Narrow'], ['default', 'Default'], ['wide', 'Wide'], ['full', 'Full width']], value: prefs.lineWidth, set: k => setPrefs({ lineWidth: k as Prefs['lineWidth'] }) },

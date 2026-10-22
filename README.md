@@ -63,6 +63,10 @@ Installed apps check the latest release 10 seconds after starting and every 4 ho
 
 Updates are found through the `latest.yml` and `latest-linux.yml` files in the release, so keep them among its files. Releases marked as drafts or pre-releases are skipped.
 
+## Pomodoro timer
+
+Hover over one of today's tasks and click the tomato to start a 25-minute pomodoro for it. The countdown shows on the task and in the status bar, from any tab, with pause and stop buttons. When it ends, a bell plays, a notification appears, and a 5-minute break starts; every fourth break is 15 minutes. After a break, the next pomodoro waits on the task until you click it. On Windows the taskbar button shows the progress. Change the lengths, or turn off the bell, in **Settings → Pomodoro**. The timer isn't saved: closing the app stops it.
+
 ## Keyboard
 
 | Where | Key | Action |
@@ -72,6 +76,7 @@ Updates are found through the `latest.yml` and `latest-linux.yml` files in the r
 | Focused task | p | priority menu |
 | Focused task | Delete / Backspace | remove (daily tasks) |
 | Focused task | ↑ / ↓ | move between tasks |
+| Focused task | T | start a pomodoro, or pause / resume it |
 | Editor | Enter | new line, continuing lists and checkboxes |
 | Editor | Backspace at the start of a bullet | turn it back into a plain line |
 | Editor | Shift+↑ / ↓, Shift+click | select whole lines, then copy, cut, delete or type over them |

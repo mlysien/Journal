@@ -175,16 +175,16 @@ export function App({ initial }: { initial: Loaded }) {
       update(v => ({ ...v, tasks: v.tasks.map(x => x.id !== t.id ? x : x.done ? { ...x, done: false, doneOn: undefined, day: today } : { ...x, done: true, doneOn: today }) }));
     },
     setPri: (t, pri) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, pri } : x)) })),
-    remove: t => {
-      if (timer.pomo?.taskId === t.id) timer.stop();
-      update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) }));
-    },
+    remove: t => update(v => ({ ...v, tasks: v.tasks.filter(x => x.id !== t.id) })),
     openLink: name => openByTitle(name),
     rename: (t, title) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.id === t.id ? { ...x, title } : x)) })),
     relink: (draft, final) => update(v => ({ ...v, tasks: v.tasks.map(x => (x.title.includes(draft) ? { ...x, title: x.title.replace(draft, final) } : x)) })),
-    timer,
+    timer: prefs.pomo ? timer : undefined,
   };
   const pomo = timer.pomo, pomoTitle = pomo ? dailyById.get(pomo.taskId)?.title ?? pomo.title : '';
+  // A timer ends with its task: checked off, deleted, or changed in the note file.
+  const pomoTask = pomo && dailyById.get(pomo.taskId), pomoTaskOver = !!pomo && (!pomoTask || !!pomoTask.done);
+  useEffect(() => { if (pomoTaskOver) timer.stop(); }, [pomoTaskOver]);
   const addTask = (title: string, pri: Pri) =>
     update(v => ({ ...v, tasks: [...v.tasks, { id: uid(), title, pri, createdOn: today, carried: 0, day: today }] }));
 

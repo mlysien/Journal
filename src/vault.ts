@@ -63,10 +63,14 @@ export interface Prefs {
   sound: boolean;
   live: boolean;
   spell: boolean;
+  /** Show the pomodoro timer on today's tasks. */
+  pomo: boolean;
   /** Pomodoro lengths, in minutes: focus, a short break, and the long break after every fourth focus. */
   pomoFocus: number;
   pomoBreak: number;
   pomoLong: number;
+  /** Start the next pomodoro as soon as a break ends, instead of waiting for a click. */
+  pomoAuto: boolean;
   /** Play a bell when a pomodoro or a break ends. */
   pomoSound: boolean;
   /** Key bindings, like `Ctrl+Shift+T`; an empty string turns one off. */
@@ -138,7 +142,7 @@ export const uid = () => Date.now().toString(36) + Math.random().toString(36).sl
 
 const DEFAULT_PREFS: Prefs = { theme: 'system', accent: 'violet', textScale: 'medium', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true,
   showPri: true, showAge: true, showCarried: true, sound: true, live: true, spell: false,
-  pomoFocus: 25, pomoBreak: 5, pomoLong: 15, pomoSound: true,
+  pomo: true, pomoFocus: 25, pomoBreak: 5, pomoLong: 15, pomoAuto: true, pomoSound: true,
   keys: Object.fromEntries(SHORTCUTS.map(s => [s.id, s.default])) as Record<ShortcutId, string>,
 };
 

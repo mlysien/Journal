@@ -65,7 +65,7 @@ Updates are found through the `latest.yml` and `latest-linux.yml` files in the r
 
 ## Pomodoro timer
 
-Hover over one of today's tasks and click the tomato to start a 25-minute pomodoro for it. The countdown shows on the task and in the status bar, from any tab, with pause and stop buttons. When it ends, a bell plays, a notification appears, and a 5-minute break starts; every fourth break is 15 minutes. After a break, the next pomodoro waits on the task until you click it. On Windows the taskbar button shows the progress. Change the lengths, or turn off the bell, in **Settings → Pomodoro**. The timer isn't saved: closing the app stops it.
+Hover over one of today's tasks and click the tomato to start a 25-minute pomodoro for it. The countdown shows on the task and in the status bar, from any tab, with pause and stop buttons. When it ends, a bell plays, a notification appears, and a 5-minute break starts; every fourth break is 15 minutes. After a break, the next pomodoro starts on its own, and the cycle goes on until you stop it or check the task off. On Windows the taskbar button shows the progress. In **Settings → Pomodoro** you can set the work time and the break lengths in minutes, make the next pomodoro wait for a click instead, turn off the bell, or turn the timer off altogether. The timer isn't saved: closing the app stops it.
 
 ## Keyboard
 

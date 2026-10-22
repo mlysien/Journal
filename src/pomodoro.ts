@@ -4,7 +4,8 @@ import type { Prefs } from './vault';
 
 /**
  * A pomodoro timer for one task: focus, then a break (a long one after every fourth focus), then
- * the next focus waits, paused at full length, for a click. Kept in memory only.
+ * the next focus, which starts on its own or, with pomoAuto off, waits paused at full length for a
+ * click. Kept in memory only.
  */
 export interface Pomodoro {
   taskId: string;
@@ -50,7 +51,10 @@ export function usePomodoro(prefs: Prefs): Timer {
     return () => clearInterval(id);
   }, [pomo?.endsAt]);
 
-  // A phase ran out: focus moves on to a break, a break to the next focus, waiting for a click.
+  // Turning the timer off in Settings stops it.
+  useEffect(() => { if (!prefs.pomo) setPomo(null); }, [prefs.pomo]);
+
+  // A phase ran out: focus moves on to a break, a break to the next focus.
   useEffect(() => {
     if (!pomo?.endsAt || now < pomo.endsAt) return;
     const p = latest.current, t = Date.now();
@@ -60,9 +64,10 @@ export function usePomodoro(prefs: Prefs): Timer {
       window.journal.notify('Pomodoro done', `${pomo.title}\nTime for a ${total / MIN}-minute ${long ? 'long ' : ''}break.`);
       setPomo({ ...pomo, phase: 'break', done, total, endsAt: t + total, left: total });
     } else {
-      window.journal.notify('Break over', `Ready for the next pomodoro? ${pomo.title}`);
       const total = p.pomoFocus * MIN;
-      setPomo({ ...pomo, phase: 'focus', total, endsAt: null, left: total });
+      if (p.pomoAuto) window.journal.notify('Break over', `Next pomodoro started: ${pomo.title}`);
+      else window.journal.notify('Break over', `Ready for the next pomodoro? ${pomo.title}`);
+      setPomo({ ...pomo, phase: 'focus', total, endsAt: p.pomoAuto ? t + total : null, left: total });
     }
   }, [now, pomo]);
 

@@ -7,7 +7,8 @@ import { dailyPath, formatProblem, normalizeFolder } from '../dailyFormat';
 
 type Row =
   | { kind: 'seg'; label: string; desc: string; options: [string, string][]; value: string; set: (k: string) => void }
-  | { kind: 'toggle'; label: string; desc: string; key: 'carry' | 'showPri' | 'showAge' | 'showCarried' | 'sound' | 'live' | 'spell' | 'pomoSound' }
+  | { kind: 'toggle'; label: string; desc: string; key: 'carry' | 'showPri' | 'showAge' | 'showCarried' | 'sound' | 'live' | 'spell' | 'pomo' | 'pomoAuto' | 'pomoSound' }
+  | { kind: 'minutes'; label: string; desc: string; key: 'pomoFocus' | 'pomoBreak' | 'pomoLong' }
   | { kind: 'switch'; label: string; desc: string; on: boolean; set: (on: boolean) => void }
   | { kind: 'shortcut'; label: string; desc: string; id: ShortcutId }
   | { kind: 'update'; label: string; desc: string }
@@ -51,6 +52,25 @@ function ShortcutField({ value, fallback, onChange }: { value: string; fallback:
       <button onClick={() => onChange(fallback)} disabled={value === fallback} title={`Reset to ${keyLabel(fallback, platform)}`} className="hov-text-active"
         style={{ border: 'none', background: 'transparent', color: 'var(--muted)', font: 'inherit', fontSize: FS.sm, padding: '3px 8px', borderRadius: 6, cursor: value === fallback ? 'default' : 'pointer', opacity: value === fallback ? 0 : 1 }}>Reset</button>
     </span>
+  );
+}
+
+/** A length in whole minutes, saved on Enter or when it loses focus; an invalid entry goes back. */
+function MinutesField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const n = Math.round(+text);
+    if (text.trim() && n >= 1 && n <= 240) onChange(n);
+    else setText(String(value));
+  };
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none', fontSize: FS.sm, color: 'var(--muted)' }}>
+      <input type="number" min={1} max={240} value={text} onChange={e => setText(e.target.value)} onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { setText(String(value)); e.currentTarget.blur(); } }}
+        style={{ ...field, width: 64, textAlign: 'right', padding: '5px 8px' }} />
+      min
+    </label>
   );
 }
 
@@ -122,10 +142,14 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
       { kind: 'daily', label: 'Location and file names', desc: 'Where daily notes are saved. Existing daily notes are moved when you apply a change.' },
     ] },
     { label: 'Pomodoro', rows: [
-      { kind: 'seg', label: 'Focus', desc: 'Start a pomodoro with the tomato button on a task, or press T on a focused task.', options: [['15', '15 min'], ['25', '25 min'], ['45', '45 min'], ['50', '50 min']], value: String(prefs.pomoFocus), set: k => setPrefs({ pomoFocus: +k }) },
-      { kind: 'seg', label: 'Short break', desc: 'Starts on its own when a pomodoro ends.', options: [['5', '5 min'], ['10', '10 min']], value: String(prefs.pomoBreak), set: k => setPrefs({ pomoBreak: +k }) },
-      { kind: 'seg', label: 'Long break', desc: 'Instead of the short break after every fourth pomodoro on a task.', options: [['15', '15 min'], ['20', '20 min'], ['30', '30 min']], value: String(prefs.pomoLong), set: k => setPrefs({ pomoLong: +k }) },
-      { kind: 'toggle', key: 'pomoSound', label: 'Sound when time is up', desc: 'A bell at the end of each pomodoro and break, along with a notification.' },
+      { kind: 'toggle', key: 'pomo', label: 'Pomodoro timer', desc: 'Start a pomodoro with the tomato button on one of today’s tasks, or press T on a focused task.' },
+      ...(prefs.pomo ? [
+        { kind: 'minutes', key: 'pomoFocus', label: 'Work time', desc: 'How long each pomodoro lasts.' },
+        { kind: 'minutes', key: 'pomoBreak', label: 'Short break', desc: 'Starts on its own when a pomodoro ends.' },
+        { kind: 'minutes', key: 'pomoLong', label: 'Long break', desc: 'Instead of the short break after every fourth pomodoro on a task.' },
+        { kind: 'toggle', key: 'pomoAuto', label: 'Start the next pomodoro automatically', desc: 'When a break ends. Turn off to wait for a click on the task.' },
+        { kind: 'toggle', key: 'pomoSound', label: 'Sound when time is up', desc: 'A bell at the end of each pomodoro and break, along with a notification.' },
+      ] satisfies Row[] : []),
     ] },
     { label: 'Editor', rows: [
       { kind: 'seg', label: 'Readable line length', desc: 'How wide notes can get. Shorter lines are easier to read.', options: [['narrow', 'Narrow'], ['default', 'Default'], ['wide', 'Wide'], ['full', 'Full width']], value: prefs.lineWidth, set: k => setPrefs({ lineWidth: k as Prefs['lineWidth'] }) },
@@ -162,6 +186,7 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
                   {r.options.map(([k, l]) => <button key={k} onClick={() => r.set(k)} style={segBtn(r.value === k)}>{l}</button>)}
                 </div>
               )}
+              {r.kind === 'minutes' && <MinutesField value={prefs[r.key]} onChange={v => setPrefs({ [r.key]: v })} />}
               {r.kind === 'update' && (() => {
                 const busy = update.state === 'checking' || update.state === 'downloading' || update.state === 'unsupported';
                 const ready = update.state === 'ready';

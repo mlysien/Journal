@@ -16,6 +16,7 @@ import { Editor } from './components/Editor';
 import { Search } from './components/Search';
 import { Sidebar, type DeleteTarget } from './components/Sidebar';
 import { SettingsPage } from './components/SettingsPage';
+import { InlineText } from './components/InlineText';
 import { PastTasks, TodayTasks, type TaskActions } from './components/Tasks';
 import { ChevronLeft, ChevronRight, Close, CupIcon, PauseIcon, PlayIcon, Plus, SidebarIcon, StopIcon, TomatoIcon } from './components/icons';
 
@@ -372,12 +373,14 @@ export function App({ initial }: { initial: Loaded }) {
               {pomo ? (
                 // The running pomodoro, visible from any tab; its task is on today's note.
                 <span style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, color: pomo.endsAt === null ? 'var(--muted)' : pomo.phase === 'break' ? 'var(--accent)' : 'var(--pri-h)' }}>
-                  <button onClick={openToday} title="Open today’s tasks" className="hov-active"
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, height: 22, padding: '0 6px', margin: '0 0 0 -6px', border: 'none', borderRadius: 5, background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+                  {/* Not a <button>: the title is shown as in the task list, and may hold links and copy buttons. */}
+                  <div role="button" tabIndex={0} onClick={openToday} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openToday(); } }}
+                    title="Open today’s tasks" className="hov-active"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, height: 22, padding: '0 6px', margin: '0 0 0 -6px', borderRadius: 5, cursor: 'pointer', outline: 'none' }}>
                     {pomo.phase === 'break' ? <CupIcon /> : <TomatoIcon />}
                     <span style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{clock(timer.left)}</span>
-                    <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pomo.phase === 'break' ? 'Break' : pomoTitle}</span>
-                  </button>
+                    <span style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pomo.phase === 'break' ? 'Break' : <InlineText text={pomoTitle} onOpenLink={openByTitle} />}</span>
+                  </div>
                   <button onClick={timer.toggle} title={pomo.endsAt === null ? 'Resume' : 'Pause'} className="hov-text-active" style={{ ...iconBtn, width: 22, height: 22, color: 'var(--faint)' }}>{pomo.endsAt === null ? <PlayIcon /> : <PauseIcon />}</button>
                   <button onClick={timer.stop} title="Stop the timer" className="hov-text-active" style={{ ...iconBtn, width: 22, height: 22, color: 'var(--faint)' }}><StopIcon /></button>
                 </span>

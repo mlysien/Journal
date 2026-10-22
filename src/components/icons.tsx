@@ -127,6 +127,10 @@ export const PaletteIcon = () => (
 export const TomatoIcon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4.3c-2.8 0-4.8 1.7-4.8 4.2S4.3 12.6 7 12.6s4.8-1.6 4.8-4.1S9.8 4.3 7 4.3z" /><path d="M7 4.3V1.9M4.6 3.7L7 4.3l2.4-.6" /></svg>
 );
+/** A stopwatch, sized to sit in a line of small text. */
+export const StopwatchIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6.8" r="4" /><path d="M6 6.8V4.9M4.8 1.2h2.4M9.1 3.4l.7-.7" /></svg>
+);
 export const CupIcon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 5.5h7.5v3.2a3 3 0 0 1-3 3h-1.5a3 3 0 0 1-3-3V5.5z" /><path d="M10 6.5h.8a1.6 1.6 0 0 1 0 3.2H10M5 1.8v1.6M7.5 1.8v1.6" /></svg>
 );

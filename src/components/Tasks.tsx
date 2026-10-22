@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } f
 import { fmt, parseIso, iso } from '../dates';
 import { FS, MONO } from '../theme';
 import { formatSpent, PRI, toneOf, type Pri, type TaskItem } from '../vault';
-import { Check, Close, CupIcon, PauseIcon, PlayIcon, Plus, StopIcon, TomatoIcon } from './icons';
+import { Check, Close, CupIcon, StopwatchIcon, PauseIcon, PlayIcon, Plus, StopIcon, TomatoIcon } from './icons';
 import { InlineText } from './InlineText';
 import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
 import { clock, type Timer } from '../pomodoro';
@@ -140,7 +140,7 @@ function TaskTimer({ t, timer }: { t: TaskItem; timer: Timer }) {
   );
 }
 
-const spentLabel = (t: TaskItem) => <span title={`${formatSpent(t.spent)} of pomodoro focus time`}>⏱ {formatSpent(t.spent)}</span>;
+const spentLabel = (t: TaskItem) => <span title={`${formatSpent(t.spent)} of pomodoro focus time`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}><StopwatchIcon />{formatSpent(t.spent)}</span>;
 const carryTitle = (n: number) => `Carried over ${n} time${n === 1 ? '' : 's'}`;
 const createdTitle = (t: TaskItem) => `Created ${fmt(t.createdOn, { month: 'short', day: 'numeric' })}`;
 
@@ -179,7 +179,8 @@ export function DailyTaskRow({ t, actions, show, menu, setMenu }: { t: TaskItem;
       <TaskTitle t={t} actions={actions} style={titleStyle(t)} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: FS.sm, color: tone ? 'var(--warm)' : 'var(--faint)', fontVariantNumeric: 'tabular-nums', flex: 'none' }}>
         {actions.timer && <TaskTimer t={t} timer={actions.timer} />}
-        {t.spent > 0 && spentLabel(t)}
+        {/* While the task's timer runs, the countdown takes its place. */}
+        {t.spent > 0 && actions.timer?.pomo?.taskId !== t.id && spentLabel(t)}
         {show.carried && carried > 0 && <span title={carryTitle(carried)}>↻ {carried}</span>}
         {show.age && <span title={createdTitle(t)} style={{ minWidth: 50, textAlign: 'right' }}>{t.done ? 'done' : t.age === 0 ? 'today' : `${t.age}d old`}</span>}
         {show.pri && <span data-primenu="1" style={{ position: 'relative', display: 'flex' }}>

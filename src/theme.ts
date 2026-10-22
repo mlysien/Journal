@@ -17,10 +17,11 @@ export const isAccent = (a: unknown): a is Accent => typeof a === 'string' && a 
 // Windows renders its own hinted fonts much more crisply than web fonts, so it gets Segoe UI (as
 // Obsidian and VS Code do); elsewhere the bundled Geist is used. Code is in Cascadia Code on
 // Windows and JetBrains Mono elsewhere, both bundled: Windows 10 has no system Cascadia, and the
-// system copy on Windows 11 didn't show the programming ligatures.
+// system copy on Windows 11 didn't show the programming ligatures. 'Journal Arrows' (styles.css)
+// takes - < > from Geist, so -> and <- turn into arrows in Segoe UI text as they do in Geist.
 const WIN = typeof window !== 'undefined' && window.journal?.platform === 'win32';
 export const UI = WIN
-  ? "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif"
+  ? "'Journal Arrows', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif"
   : "'Geist Sans', ui-sans-serif, system-ui, sans-serif";
 export const MONO = WIN
   ? "'Cascadia Code', Consolas, ui-monospace, monospace"

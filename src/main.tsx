@@ -5,6 +5,8 @@ import '@fontsource/geist-sans/500.css';
 import '@fontsource/geist-sans/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/cascadia-code/400.css';
+import '@fontsource/cascadia-code/500.css';
 import { App } from './App';
 import { todayIso } from './dates';
 import { fromSnapshot, type Loaded } from './vault';

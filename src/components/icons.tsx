@@ -68,6 +68,10 @@ export const CollapseAllIcon = () => (
 export const ExpandAllIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 5.5 8 2.5l3 3M5 10.5l3 3 3-3" /></svg>
 );
+/** A tray with an opening, for the Inbox. */
+export const InboxIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M2 8.5 4 3.6A1 1 0 0 1 4.9 3h6.2a1 1 0 0 1 .9.6L14 8.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12V8.5z" /><path d="M2 8.5h3.3l.9 1.7h3.6l.9-1.7H14" /></svg>
+);
 export const SearchIcon = () => (
   <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><circle cx="7" cy="7" r="4.5" /><path d="m10.4 10.4 3.1 3.1" /></svg>
 );
@@ -99,6 +103,7 @@ export const PICKABLE: Record<string, JSX.Element> = {
   camera: <><path d="M2 5.75A1.5 1.5 0 0 1 3.5 4.25h1.6l1.2 -1.5h3.4L10.9 4.25h1.6A1.5 1.5 0 0 1 14 5.75v6a1.5 1.5 0 0 1 -1.5 1.5h-9A1.5 1.5 0 0 1 2 11.75v-6z" /><circle cx="8" cy="8.55" r="2.3" /></>,
   coffee: <path d="M2 6h9.14v4.57a3.43 3.43 0 0 1 -3.43 3.43H5.43a3.43 3.43 0 0 1 -3.43 -3.43V6zM11.14 7.14h1.14a1.71 1.71 0 0 1 0 3.43h-1.14M4.86 2v1.71M7.71 2v1.71" />,
   money: <><rect x="2" y="4" width="12" height="8" rx="1.5" /><circle cx="8" cy="8" r="1.8" /><path d="M4.5 6.5v3M11.5 6.5v3" /></>,
+  inbox: <><path d="M2 8.5 4 3.6A1 1 0 0 1 4.9 3h6.2a1 1 0 0 1 .9.6L14 8.5V12a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12V8.5z" /><path d="M2 8.5h3.3l.9 1.7h3.6l.9-1.7H14" /></>,
   archive: <><rect x="2" y="2.5" width="12" height="3" rx="1" /><path d="M3 5.5v6.5A1.5 1.5 0 0 0 4.5 13.5h7a1.5 1.5 0 0 0 1.5 -1.5V5.5M6.5 8h3" /></>,
   lock: <><rect x="3.09" y="6.91" width="9.82" height="7.09" rx="1.64" /><path d="M5.27 6.91V4.73a2.73 2.73 0 0 1 5.45 0v2.18" /></>,
   plane: <path d="M14 2.25 2 7.25l4.5 1.8L8.3 13.75 14 2.25zM6.5 9.05 14 2.25" />,

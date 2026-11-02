@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type M
 import { fmt, isoWeek, daysBetween } from '../dates';
 import { FS, MONO } from '../theme';
 import { wordsOf } from '../markdown';
-import { SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_WIDTH, type IconChoice, type Note, type TabId, type UiState, type Vault } from '../vault';
+import { isInbox, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_WIDTH, type IconChoice, type Note, type TabId, type UiState, type Vault } from '../vault';
 import {
-  SearchIcon, CalendarIcon, ChevronRight, CollapseAllIcon, DayIcon, ExpandAllIcon, FileIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GearIcon, JournalIcon, NotePlusIcon,
+  SearchIcon, CalendarIcon, ChevronRight, CollapseAllIcon, DayIcon, ExpandAllIcon, FileIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GearIcon, InboxIcon, JournalIcon, NotePlusIcon,
   ICON_COLORS, PaletteIcon, PICKABLE, PickedIcon, TrashIcon,
 } from './icons';
 import { addDays, dayLabel } from './Tasks';
@@ -22,6 +22,7 @@ interface Props {
   todayOpen: number;
   open: (id: TabId) => void;
   onSearch: () => void;
+  onInbox: () => void;
   onNewNote: (folder: string | null) => void;
   /** Returns an error message, or null once the folder exists. */
   onNewFolder: (parent: string | null, name: string) => string | null;
@@ -87,7 +88,8 @@ function buildTree(vault: Vault): FolderNode {
     return n;
   };
   vault.folders.forEach(get);
-  Object.values(vault.notes).forEach(n => get(n.folder ?? '').notes.push(n));
+  // The Inbox has its own link at the top, so it isn't listed again.
+  Object.values(vault.notes).filter(n => !isInbox(n)).forEach(n => get(n.folder ?? '').notes.push(n));
   const sort = (n: FolderNode) => {
     // Folders the user dragged into place keep that order; new ones go after them, A to Z.
     const order = vault.order[n.path], rank = (f: FolderNode) => { const i = order?.indexOf(f.name) ?? -1; return i < 0 ? Infinity : i; };
@@ -138,8 +140,11 @@ function IconPicker({ current, fallback, onPick }: { current?: IconChoice; fallb
   );
 }
 
-export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open, onSearch, onNewNote, onNewFolder, onIcon, onDelete, onMoveFolder }: Props) {
+export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open, onSearch, onInbox, onNewNote, onNewFolder, onIcon, onDelete, onMoveFolder }: Props) {
   const active = ui.active;
+  const inbox = Object.values(vault.notes).find(isInbox);
+  /** Open list items in the Inbox: `- note`, `- [ ] task`, `1. item`, but not `- [x] done`. */
+  const inboxCount = inbox ? inbox.blocks.join('\n').split('\n').filter(l => /^\s*([-*+]|\d+\.)\s+(?!\[[xX]\])\S/.test(l)).length : 0;
   const [draft, setDraft] = useState<{ parent: string | null; name: string; error: string | null } | null>(null);
   /** The right-click menu, or the icon picker opened from it, at a spot in the sidebar. */
   const [menu, setMenu] = useState<{ x: number; y: number; row: Row; picker?: boolean } | null>(null);
@@ -306,6 +311,7 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
   return (
     <aside ref={aside} style={{ width: ui.sidebarWidth, flex: 'none', position: 'relative', display: 'flex', flexDirection: 'column', background: 'var(--side)', borderRight: '1px solid var(--border)', minHeight: 0 }}>
       <div style={{ padding: '8px 8px 4px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <NavLink act={!!inbox && active === 'note:' + inbox.id} onClick={onInbox} icon={<InboxIcon />} label="Inbox" meta={inboxCount ? String(inboxCount) : keyLabel(vault.prefs.keys.inbox, window.journal.platform)} metaStyle={{ fontVariantNumeric: 'tabular-nums' }} />
         <NavLink act={active === 'daily:' + today} onClick={() => open('daily:' + today)} icon={<CalendarIcon />} label="Today" meta={fmt(today, { month: 'short', day: 'numeric' })} />
         <NavLink act={false} onClick={onSearch} icon={<SearchIcon />} label="Search" meta={keyLabel(vault.prefs.keys.search, window.journal.platform)} />
       </div>

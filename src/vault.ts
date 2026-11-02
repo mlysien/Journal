@@ -79,10 +79,11 @@ export interface Prefs {
   keys: Record<ShortcutId, string>;
 }
 
-export type ShortcutId = 'today' | 'search' | 'newNote' | 'closeTab' | 'reopenTab' | 'sidebar';
+export type ShortcutId = 'today' | 'inbox' | 'search' | 'newNote' | 'closeTab' | 'reopenTab' | 'sidebar';
 
 export const SHORTCUTS: { id: ShortcutId; label: string; default: string }[] = [
   { id: 'today', label: 'Open today’s daily note', default: 'Ctrl+D' },
+  { id: 'inbox', label: 'Open the Inbox', default: 'Ctrl+I' },
   { id: 'search', label: 'Search', default: 'Ctrl+K' },
   { id: 'newNote', label: 'New note', default: 'Ctrl+N' },
   { id: 'closeTab', label: 'Close tab', default: 'Ctrl+W' },
@@ -113,6 +114,10 @@ export interface Vault {
   /** Hand-arranged order of folders, as child names keyed by parent path ('' for the vault root). */
   order: Record<string, string[]>;
 }
+
+/** The note for quick notes and things to remember, pinned at the top of the sidebar. */
+export const INBOX = 'Inbox.md';
+export const isInbox = (n: Note) => n.path.toLowerCase() === INBOX.toLowerCase();
 
 export const SIDEBAR_WIDTH = 256, SIDEBAR_MIN = 180, SIDEBAR_MAX = 560;
 

@@ -5,7 +5,7 @@ import { FS, MONO, themeStyle, UI, type Theme, type ThemePref } from './theme';
 import { dailyName, dateFromName } from './dailyFormat';
 import { AssetContext, makeAssets } from './assets';
 import {
-  addFolder, addSpent, dailyDates, dailyFile, dailyTaskItems, folderPath, moveFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
+  addFolder, addSpent, dailyDates, dailyFile, dailyTaskItems, folderPath, INBOX, isInbox, moveFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
   type Loaded, type Pri, type Prefs, type ShortcutId, type TabId,
 } from './vault';
 import { keyName } from './keys';
@@ -150,8 +150,13 @@ export function App({ initial }: { initial: Loaded }) {
     if (hit) openTab('note:' + hit.id); else newNote(name, null, 'body');
   };
   const openToday = () => openTab('daily:' + today);
+  const openInbox = () => {
+    const inbox = Object.values(vault.notes).find(isInbox);
+    if (inbox) openTab('note:' + inbox.id); else newNote(INBOX.slice(0, -3), null, 'body');
+  };
   shortcut.current = id => {
     if (id === 'today') openToday();
+    else if (id === 'inbox') openInbox();
     else if (id === 'search') setSearching(s => !s);
     else if (id === 'newNote') newNote();
     else if (id === 'closeTab') { if (active) closeTab(active); }
@@ -266,7 +271,7 @@ export function App({ initial }: { initial: Loaded }) {
         <div style={{ flex: 1, display: 'flex', minHeight: 0, zoom: TEXT_ZOOM[prefs.textScale] }}>
           {!ui.sidebarHidden && (
             <Sidebar vault={vault} ui={{ ...ui, active }} setUi={setUi} today={today} dates={dates}
-              zoom={TEXT_ZOOM[prefs.textScale]} todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)}
+              zoom={TEXT_ZOOM[prefs.textScale]} todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)} onInbox={openInbox}
               onNewNote={folder => newNote('Untitled', folder)} onNewFolder={newFolder} onDelete={deleteItem}
               onIcon={(key, choice) => update(v => { const icons = { ...v.icons }; if (choice) icons[key] = choice; else delete icons[key]; return { ...v, icons }; })}
               onMoveFolder={(parent, siblings, name, before) => update(v => moveFolder(v, parent, siblings, name, before))} />

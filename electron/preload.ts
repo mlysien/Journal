@@ -11,6 +11,7 @@ const api: JournalApi = {
   pathForFile: file => webUtils.getPathForFile(file),
   existingFiles: candidates => ipcRenderer.invoke('fs:existingFiles', candidates),
   trash: rel => ipcRenderer.invoke('vault:trash', rel),
+  move: (from, to) => ipcRenderer.invoke('vault:move', from, to),
   mkdir: rel => ipcRenderer.invoke('vault:mkdir', rel),
   chooseVault: () => ipcRenderer.invoke('vault:choose'),
   revealVault: () => ipcRenderer.invoke('vault:reveal'),

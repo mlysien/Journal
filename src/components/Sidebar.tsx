@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type M
 import { fmt, isoWeek, daysBetween } from '../dates';
 import { FS, MONO } from '../theme';
 import { wordsOf } from '../markdown';
-import { isInbox, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_WIDTH, type IconChoice, type Note, type TabId, type UiState, type Vault } from '../vault';
+import { isInbox, parentOf, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_WIDTH, under, type IconChoice, type Note, type TabId, type UiState, type Vault } from '../vault';
 import {
   SearchIcon, CalendarIcon, ChevronRight, CollapseAllIcon, DayIcon, ExpandAllIcon, FileIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GearIcon, InboxIcon, JournalIcon, NotePlusIcon,
   ICON_COLORS, PaletteIcon, PICKABLE, PickedIcon, TrashIcon,
@@ -31,6 +31,10 @@ interface Props {
   onDelete: (target: DeleteTarget) => void;
   /** Moves folder `name` to just before `before` (null: the end) among `siblings` in `parent`. */
   onMoveFolder: (parent: string, siblings: string[], name: string, before: string | null) => void;
+  /** Moves a note into `folder` (null: the vault root). */
+  onMoveNote: (id: string, folder: string | null) => void;
+  /** Moves folder `dir` into `parent` ('' for the vault root). */
+  onMoveInto: (dir: string, parent: string) => void;
 }
 
 export type DeleteTarget = { kind: 'note'; id: string; label: string } | { kind: 'folder'; path: string; label: string } | { kind: 'daily'; date: string; label: string };
@@ -41,6 +45,14 @@ type Row =
   | { kind: 'folder'; key: string; label: string; depth: number; count: number; path: string | null; journal?: boolean; parent?: string; siblings?: string[] }
   | { kind: 'note'; key: string; label: string; depth: number; meta: string; tab: TabId; day?: boolean; path?: string }
   | { kind: 'draft'; key: string; depth: number };
+
+/** A note or folder being dragged. `fixed` folders (the daily notes one) can only be reordered. */
+type Drag = { kind: 'folder'; path: string; parent: string; name: string; fixed: boolean } | { kind: 'note'; id: string; folder: string };
+/**
+ * Where a drag would land: before or after the folder row `key` among its siblings, or into the
+ * folder `target` ('' for the vault root), drawn on row `key` ('root' for the whole list).
+ */
+type DropHint = { key: string; at: 'before' | 'after' } | { key: string; at: 'into'; target: string };
 
 interface FolderNode { path: string; name: string; folders: FolderNode[]; notes: Note[] }
 /** A folder made by the daily notes format (like `2026` or `2026/10`), with the days directly in it. */
@@ -140,7 +152,7 @@ function IconPicker({ current, fallback, onPick }: { current?: IconChoice; fallb
   );
 }
 
-export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open, onSearch, onInbox, onNewNote, onNewFolder, onIcon, onDelete, onMoveFolder }: Props) {
+export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open, onSearch, onInbox, onNewNote, onNewFolder, onIcon, onDelete, onMoveFolder, onMoveNote, onMoveInto }: Props) {
   const active = ui.active;
   const inbox = Object.values(vault.notes).find(isInbox);
   /** Open list items in the Inbox: `- note`, `- [ ] task`, `1. item`, but not `- [x] done`. */
@@ -148,9 +160,11 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
   const [draft, setDraft] = useState<{ parent: string | null; name: string; error: string | null } | null>(null);
   /** The right-click menu, or the icon picker opened from it, at a spot in the sidebar. */
   const [menu, setMenu] = useState<{ x: number; y: number; row: Row; picker?: boolean } | null>(null);
-  /** A folder being dragged, and where it would land. */
-  const [drag, setDrag] = useState<{ parent: string; name: string } | null>(null);
-  const [dropHint, setDropHint] = useState<{ key: string; after: boolean } | null>(null);
+  /** A note or folder being dragged, and where it would land. */
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [dropHint, setDropHint] = useState<DropHint | null>(null);
+  /** A closed folder held under a drag, which opens after a moment. */
+  const expand = useRef<{ key: string; timer: number } | null>(null);
   const aside = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!menu) return;
@@ -282,23 +296,62 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
     return items;
   };
 
-  /* Dragging folders into a new order, among the folders next to them. */
-  const canDrop = (r: Row) => !!drag && r.kind === 'folder' && r.parent === drag.parent && !!r.siblings;
-  const dragOver = (e: DragEvent, r: Row) => {
-    if (!canDrop(r)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const box = e.currentTarget.getBoundingClientRect(), after = e.clientY > box.top + box.height / 2;
-    if (dropHint?.key !== r.key || dropHint.after !== after) setDropHint({ key: r.key, after });
+  /*
+   * Dragging. A note or folder dropped on a folder goes into it; on a note, next to that note; on
+   * empty space, to the vault root. Near the top or bottom edge of a folder next to it, a folder
+   * moves to that spot in their order instead.
+   */
+  const canInto = (target: string) => !!drag && (drag.kind === 'note' ? target !== drag.folder : !drag.fixed && target !== drag.parent && !under(target, drag.path));
+  const hintAt = (e: DragEvent, r: Row | null): DropHint | null => {
+    if (!drag) return null;
+    if (!r) return canInto('') ? { key: 'root', at: 'into', target: '' } : null;
+    if (r.kind === 'folder' && r.path !== null) {
+      const box = e.currentTarget.getBoundingClientRect(), y = (e.clientY - box.top) / box.height;
+      const reorder = drag.kind === 'folder' && r.parent === drag.parent && !!r.siblings;
+      if (reorder && (y < 0.25 || y > 0.75 || !canInto(r.path))) return { key: r.key, at: y < 0.5 ? 'before' : 'after' };
+      return canInto(r.path) ? { key: r.key, at: 'into', target: r.path } : null;
+    }
+    if (r.kind === 'note' && r.path && !r.day) {
+      const f = parentOf(r.path);
+      if ((!f || vault.folders.includes(f)) && canInto(f)) return { key: f ? 'f:' + f : 'root', at: 'into', target: f };
+    }
+    return null;
   };
-  const drop = (e: DragEvent, r: Row) => {
-    if (!canDrop(r) || r.kind !== 'folder' || !drag) return;
-    e.preventDefault();
-    const sib = r.siblings!, after = dropHint?.key === r.key && dropHint.after;
-    const before = after ? sib[sib.indexOf(r.label) + 1] ?? null : r.label;
-    if (before !== drag.name) onMoveFolder(drag.parent, sib, drag.name, before);
-    setDrag(null); setDropHint(null);
+  const stopExpand = () => { if (expand.current) { clearTimeout(expand.current.timer); expand.current = null; } };
+  const dragOver = (e: DragEvent, r: Row | null) => {
+    if (!drag) return;
+    e.stopPropagation();
+    const hint = hintAt(e, r);
+    if (hint) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+    if (hint?.key !== dropHint?.key || hint?.at !== dropHint?.at) setDropHint(hint);
+    if (hint?.at === 'into' && r?.kind === 'folder' && !isOpen(r.key)) {
+      if (expand.current?.key !== r.key) { stopExpand(); const key = r.key; expand.current = { key, timer: window.setTimeout(() => setOpen(key, true), 700) }; }
+    } else stopExpand();
   };
+  const endDrag = () => { setDrag(null); setDropHint(null); stopExpand(); };
+  const drop = (e: DragEvent) => {
+    e.stopPropagation();
+    const h = dropHint, d = drag;
+    endDrag();
+    if (!h || !d) return;
+    e.preventDefault();
+    if (h.at === 'into') {
+      if (d.kind === 'note') onMoveNote(d.id, h.target || null);
+      else onMoveInto(d.path, h.target);
+      return;
+    }
+    const r = rows.find(x => x.key === h.key);
+    if (d.kind !== 'folder' || r?.kind !== 'folder' || !r.siblings) return;
+    const sib = r.siblings, before = h.at === 'after' ? sib[sib.indexOf(r.label) + 1] ?? null : r.label;
+    if (before !== d.name) onMoveFolder(d.parent, sib, d.name, before);
+  };
+  const startDrag = (e: DragEvent, d: Drag) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData(d.kind === 'note' ? 'text/x-journal-note' : 'text/x-journal-folder', d.kind === 'note' ? d.id : d.path);
+    setDrag(d);
+  };
+  /** The outline of a folder (or the whole list) a drag would go into. */
+  const intoRing = (key: string) => dropHint?.at === 'into' && dropHint.key === key ? 'inset 0 0 0 1.5px var(--accent)' : undefined;
   const setAllOpen = (v: boolean) => setUi(u => ({ ...u, open: { ...u.open, ...Object.fromEntries(folderKeys.map(k => [k, v])) } }));
   const commitDraft = () => {
     if (!draft) return;
@@ -329,7 +382,9 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
           <CreateButtons onNote={() => newNoteIn(null)} onFolder={() => startFolder(null)} />
         </span>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 12px' }}>
+      <div onDragOver={e => dragOver(e, null)} onDrop={drop}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setDropHint(null); stopExpand(); } }}
+        style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 12px', borderRadius: 8, boxShadow: intoRing('root') }}>
         {rows.map(r => {
           if (r.kind === 'header') return <div key={r.key} style={{ padding: '14px 10px 6px', fontSize: FS.sm, fontWeight: 500, color: 'var(--faint)', letterSpacing: '0.02em' }}>{r.label}</div>;
           if (r.kind === 'draft') return (
@@ -350,14 +405,14 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
           const menuOpen = menu?.row.key === r.key;
           if (r.kind === 'folder') {
             const o = isOpen(r.key), path = r.path;
-            const hint = dropHint?.key === r.key && drag ? (dropHint.after ? 'inset 0 -2px 0 var(--accent)' : 'inset 0 2px 0 var(--accent)') : undefined;
+            const hint = dropHint?.key === r.key && drag ? (dropHint.at === 'into' ? intoRing(r.key) : dropHint.at === 'after' ? 'inset 0 -2px 0 var(--accent)' : 'inset 0 2px 0 var(--accent)') : undefined;
+            const dragged = drag?.kind === 'folder' && drag.path === path;
             return (
               <div key={r.key} onClick={() => setOpen(r.key, !o)} onContextMenu={e => { if (menuItems(r).length) openMenu(e, r); }} className="hov-bg side-row"
-                draggable={!!r.siblings && r.siblings.length > 1}
-                onDragStart={e => { if (!r.siblings || r.parent === undefined) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/x-journal-folder', r.path ?? ''); setDrag({ parent: r.parent, name: r.label }); }}
-                onDragEnd={() => { setDrag(null); setDropHint(null); }}
-                onDragOver={e => dragOver(e, r)} onDrop={e => drop(e, r)}
-                style={{ ...rowStyle(r.depth, true, false), paddingRight: path ? 4 : 10, boxShadow: hint, background: menuOpen ? 'var(--active)' : undefined, opacity: drag && drag.parent === r.parent && drag.name === r.label ? 0.5 : 1 }}>
+                draggable={!!path && r.parent !== undefined && (!r.journal || (r.siblings?.length ?? 0) > 1)}
+                onDragStart={e => { if (path && r.parent !== undefined) startDrag(e, { kind: 'folder', path, parent: r.parent, name: r.label, fixed: !!r.journal }); }}
+                onDragEnd={endDrag} onDragOver={e => dragOver(e, r)} onDrop={drop}
+                style={{ ...rowStyle(r.depth, true, false), paddingRight: path ? 4 : 10, boxShadow: hint, background: menuOpen || dropHint?.at === 'into' && dropHint.key === r.key ? 'var(--active)' : undefined, opacity: dragged ? 0.5 : 1 }}>
                 <span style={{ display: 'flex', width: 16, justifyContent: 'center', color: 'var(--faint)', transform: o ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }}><ChevronRight /></span>
                 <RowIcon><TreeIcon choice={choice} open={o} fallback={r.journal ? <JournalIcon /> : o ? <FolderOpenIcon /> : <FolderIcon />} /></RowIcon>
                 <span title={r.label} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
@@ -368,7 +423,11 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
           }
           const style = r.depth < 0 ? { ...rowStyle(0, false, r.tab === active), paddingLeft: 10 } : rowStyle(r.depth, false, r.tab === active);
           return (
-            <div key={r.key} onClick={() => open(r.tab)} onContextMenu={e => openMenu(e, r)} className="hov-bg" style={{ ...style, background: menuOpen && r.tab !== active ? 'var(--active)' : style.background }}>
+            <div key={r.key} onClick={() => open(r.tab)} onContextMenu={e => openMenu(e, r)} className="hov-bg"
+              draggable={!r.day && r.depth >= 0 && !!r.path}
+              onDragStart={e => startDrag(e, { kind: 'note', id: r.tab.slice(5), folder: parentOf(r.path!) })}
+              onDragEnd={endDrag} onDragOver={e => dragOver(e, r)} onDrop={drop}
+              style={{ ...style, background: menuOpen && r.tab !== active ? 'var(--active)' : style.background, opacity: drag?.kind === 'note' && 'note:' + drag.id === r.tab ? 0.5 : 1 }}>
               <RowIcon act={r.tab === active}><TreeIcon choice={choice} fallback={r.day ? <DayIcon /> : <FileIcon />} /></RowIcon>
               <span title={r.label} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
               <span style={{ fontSize: FS.sm, color: 'var(--faint)', fontVariantNumeric: 'tabular-nums' }}>{r.meta}</span>

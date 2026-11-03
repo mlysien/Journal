@@ -49,6 +49,8 @@ export interface JournalApi {
   existingFiles(candidates: string[]): Promise<string[] | null>;
   /** Moves a vault file or folder to the OS trash. */
   trash(rel: string): Promise<void>;
+  /** Moves a vault file or folder to a new path; fails if something is already there. */
+  move(from: string, to: string): Promise<void>;
   /** Creates a folder (and any missing parents) inside the vault. */
   mkdir(rel: string): Promise<void>;
   /** Shows a folder picker; resolves to the new root, or null if cancelled. */

@@ -127,6 +127,17 @@ ipcMain.handle('vault:trash', async (_e, p: string) => {
   await shell.trashItem(abs);
 });
 
+ipcMain.handle('vault:move', async (_e, from: string, to: string) => {
+  const src = inVault(from), dst = inVault(to);
+  if (src === root || dst === root) throw new Error('Refusing to move the vault');
+  // A note or folder made a moment ago may not be on disk yet; saving writes it at its new place.
+  try { await fs.access(src); } catch { return; }
+  // Renaming over an existing file would replace it. A case-only rename is the same file on Windows.
+  if (src.toLowerCase() !== dst.toLowerCase() && await fs.access(dst).then(() => true, () => false)) throw new Error(`${to} already exists`);
+  await fs.mkdir(path.dirname(dst), { recursive: true });
+  await fs.rename(src, dst);
+});
+
 ipcMain.handle('vault:mkdir', async (_e, p: string) => { await fs.mkdir(inVault(p), { recursive: true }); });
 
 ipcMain.handle('vault:choose', async e => {

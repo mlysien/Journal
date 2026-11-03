@@ -5,7 +5,7 @@ import { FS, MONO, themeStyle, UI, type Theme, type ThemePref } from './theme';
 import { dailyName, dateFromName } from './dailyFormat';
 import { AssetContext, makeAssets } from './assets';
 import {
-  addFolder, addSpent, dailyDates, dailyFile, dailyTaskItems, folderPath, INBOX, isInbox, moveFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
+  addFolder, addSpent, dailyDates, dailyFile, dailyTaskItems, folderMoveTarget, folderPath, INBOX, isInbox, moveFolder, placeNote, rebase, rebaseFolder, removeDaily, removeFolder, setDailyLocation, LINE_WIDTH, notePath, renameNote, sorter, TEXT_ZOOM, uid, useVault,
   type Loaded, type Pri, type Prefs, type ShortcutId, type TabId,
 } from './vault';
 import { keyName } from './keys';
@@ -42,7 +42,7 @@ const TITLE_BAR = {
 };
 
 export function App({ initial }: { initial: Loaded }) {
-  const { today, vault, update, ui, setUi, saveError, save, trash, beforeClose } = useVault(initial);
+  const { today, vault, update, ui, setUi, saveError, save, trash, move, beforeClose } = useVault(initial);
   /** A note just created, and whether its title or its body should get the caret. */
   const [justCreated, setJustCreated] = useState<{ id: string; focus: 'title' | 'body' } | null>(null);
   const titleInput = useRef<HTMLInputElement>(null);
@@ -174,6 +174,29 @@ export function App({ initial }: { initial: Loaded }) {
       : trash(vault.notes[t.id].path, v => { const notes = { ...v.notes }; const icons = { ...v.icons }; delete icons['n:' + notes[t.id].path]; delete notes[t.id]; return { ...v, notes, icons }; });
     done.catch(err => alert(`Could not delete ${t.label}.\n${err instanceof Error ? err.message : err}`));
   };
+  const moveFailed = (label: string) => (err: unknown) => alert(`Could not move ${label}.\n${err instanceof Error ? err.message : err}`);
+  /** Moves a note into `folder` (null: the vault root), renaming it if the name is taken there. */
+  const moveNote = (id: string, folder: string | null) => {
+    const n = vault.notes[id];
+    if (n.folder === folder) return;
+    const to = notePath(vault, folder, n.title, id), base = (p: string) => p.slice(p.lastIndexOf('/') + 1, -3);
+    // A name taken in the new folder gets a number, like `Plans 2`; the title shows it too.
+    const title = base(to) === base(n.path) ? n.title : base(to);
+    move(n.path, to, v => placeNote({ ...v, notes: { ...v.notes, [id]: { ...v.notes[id], title } } }, id, to))
+      .then(() => { if (folder) setUi(u => ({ ...u, open: { ...u.open, ['f:' + folder]: true } })); })
+      .catch(moveFailed(`“${n.title || 'Untitled'}”`));
+  };
+  /** Moves folder `dir` into `parent` ('' for the vault root). Open folders inside it stay open. */
+  const moveFolderInto = (dir: string, parent: string) => {
+    const r = folderMoveTarget(vault, dir, parent);
+    if ('error' in r) { alert(r.error); return; }
+    move(dir, r.path, v => rebaseFolder(v, dir, r.path))
+      .then(() => setUi(u => {
+        const open = Object.fromEntries(Object.entries(u.open).map(([k, o]) => [k.startsWith('f:') ? 'f:' + rebase(k.slice(2), dir, r.path) : k, o]));
+        return { ...u, open: parent ? { ...open, ['f:' + parent]: true } : open };
+      }))
+      .catch(moveFailed(`the folder “${dir.slice(dir.lastIndexOf('/') + 1)}”`));
+  };
   /* ---------- tasks ---------- */
 
   const actions: TaskActions = {
@@ -274,7 +297,8 @@ export function App({ initial }: { initial: Loaded }) {
               zoom={TEXT_ZOOM[prefs.textScale]} todayOpen={todayTasks.open.length} open={openTab} onSearch={() => setSearching(true)} onInbox={openInbox}
               onNewNote={folder => newNote('Untitled', folder)} onNewFolder={newFolder} onDelete={deleteItem}
               onIcon={(key, choice) => update(v => { const icons = { ...v.icons }; if (choice) icons[key] = choice; else delete icons[key]; return { ...v, icons }; })}
-              onMoveFolder={(parent, siblings, name, before) => update(v => moveFolder(v, parent, siblings, name, before))} />
+              onMoveFolder={(parent, siblings, name, before) => update(v => moveFolder(v, parent, siblings, name, before))}
+              onMoveNote={moveNote} onMoveInto={moveFolderInto} />
           )}
 
           <AssetContext.Provider value={assets}>

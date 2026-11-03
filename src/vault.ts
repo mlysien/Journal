@@ -217,14 +217,45 @@ export function notePath(v: Vault, folder: string | null, title: string, selfId:
 }
 
 export function renameNote(v: Vault, id: string, title: string): Vault {
-  const n = v.notes[id], path = notePath(v, n.folder, title, id);
-  // The note's custom icon follows it to its new path.
-  const icons = { ...v.icons };
-  if (icons['n:' + n.path]) { icons['n:' + path] = icons['n:' + n.path]; if (path !== n.path) delete icons['n:' + n.path]; }
-  return { ...v, icons, notes: { ...v.notes, [id]: { ...n, title, path } } };
+  const n = v.notes[id];
+  return placeNote({ ...v, notes: { ...v.notes, [id]: { ...n, title } } }, id, notePath(v, n.folder, title, id));
 }
 
-const under = (p: string, dir: string) => p === dir || p.startsWith(dir + '/');
+export const under = (p: string, dir: string) => p === dir || p.startsWith(dir + '/');
+/** The folder a vault path is in; '' for the vault root. */
+export const parentOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf('/')));
+/** `p` with the folder `from` at its start replaced by `to`. */
+export const rebase = (p: string, from: string, to: string) => (under(p, from) ? to + p.slice(from.length) : p);
+
+/** The note `id` at a new path, found with `notePath`. Its custom icon goes with it. */
+export function placeNote(v: Vault, id: string, path: string): Vault {
+  const n = v.notes[id], folder = parentOf(path) || null;
+  const icons = { ...v.icons };
+  if (icons['n:' + n.path]) { icons['n:' + path] = icons['n:' + n.path]; if (path !== n.path) delete icons['n:' + n.path]; }
+  return { ...v, icons, notes: { ...v.notes, [id]: { ...n, path, folder } } };
+}
+
+/** Where folder `dir` would go when moved into `parent` ('' for the vault root), or an error message. */
+export function folderMoveTarget(v: Vault, dir: string, parent: string): { path: string } | { error: string } {
+  const name = dir.slice(dir.lastIndexOf('/') + 1), path = (parent ? parent + '/' : '') + name;
+  if (under(parent, dir)) return { error: 'A folder can’t be moved into itself' };
+  if (v.prefs.daily.folder && under(v.prefs.daily.folder, dir)) return { error: `“${name}” holds the daily notes, so it stays where it is` };
+  if (!isNoteFolder(v.prefs.daily, path)) return { error: 'That name is reserved for daily notes' };
+  if (v.folders.some(f => f.toLowerCase() === path.toLowerCase())) return { error: `There is already a folder named “${name}” there` };
+  return { path };
+}
+
+/** The vault with folder `from` and everything in it at `to`: notes, subfolders, attachments, icons and order. */
+export function rebaseFolder(v: Vault, from: string, to: string): Vault {
+  const r = (p: string) => rebase(p, from, to);
+  const notes = Object.fromEntries(Object.entries(v.notes).map(([id, n]) => [id, under(n.path, from) ? { ...n, path: r(n.path), folder: n.folder && r(n.folder) } : n]));
+  const icons = Object.fromEntries(Object.entries(v.icons).map(([k, c]) => [k.slice(0, 2) + r(k.slice(2)), c]));
+  // Order lists are keyed by parent path; the folder leaves the list of the parent it was in.
+  const name = from.slice(from.lastIndexOf('/') + 1), oldParent = parentOf(from);
+  const order = Object.fromEntries(Object.entries(v.order)
+    .map(([k, names]) => [r(k), k === oldParent ? names.filter(x => x !== name) : names] as const).filter(([, names]) => names.length));
+  return { ...v, notes, icons, order, folders: v.folders.map(r), assets: v.assets.map(r) };
+}
 
 /** The vault without a folder and everything in it. */
 export function removeFolder(v: Vault, dir: string): Vault {
@@ -469,7 +500,24 @@ export function useVault(initial: Loaded) {
     for (const d of [...dirsOnDisk.current]) if (gone(d)) dirsOnDisk.current.delete(d);
     setVault(fn);
   }, []);
-  return { today, vault, update, ui, setUi, saveError, save, trash, beforeClose };
+
+  /**
+   * Move a file or folder on disk, then update the vault with `fn` to match. It runs in the save
+   * queue, so no save sees the files moved but the vault not yet.
+   */
+  const move = useCallback((from: string, to: string, fn: (v: Vault) => Vault) => {
+    const job = queue.current.then(async () => {
+      await window.journal.move(from, to);
+      const r = (p: string) => rebase(p, from, to);
+      onDisk.current = Object.fromEntries(Object.entries(onDisk.current).map(([p, text]) => [r(p), text]));
+      dirsOnDisk.current = new Set([...dirsOnDisk.current].map(r));
+      latest.current = { ...latest.current, vault: fn(latest.current.vault) };
+      setVault(fn);
+    });
+    queue.current = job.catch(() => {});
+    return job;
+  }, []);
+  return { today, vault, update, ui, setUi, saveError, save, trash, move, beforeClose };
 }
 
 /* ---------- priority marks ---------- */

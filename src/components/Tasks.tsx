@@ -64,7 +64,7 @@ const boxStyle = (done: boolean, clickable = true): CSSProperties => ({
 
 const titleStyle = (t: TaskItem): CSSProperties => ({
   flex: 1, minWidth: 0, fontSize: FS.lg, lineHeight: 1.5,
-  color: t.done ? 'var(--faint)' : toneOf(t) === 2 ? 'var(--warm-text)' : 'var(--text)',
+  color: t.done ? 'var(--faint)' : 'var(--text)',
   textDecoration: t.done ? 'line-through' : 'none', textDecorationColor: 'var(--faint)',
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 });
@@ -104,7 +104,7 @@ function TaskTitle({ t, actions, style }: { t: TaskItem; actions: TaskActions; s
   return (
     <span data-title="1" style={{ ...style, cursor: editable ? 'text' : undefined }} title={editable ? 'Click to edit' : undefined}
       onClick={e => { if (!editable || (e.target as HTMLElement).closest('[data-link]')) return; e.stopPropagation(); finished.current = false; setDraft(t.title); }}>
-      <InlineText text={t.title} onOpenLink={actions.openLink} />
+      <InlineText text={t.title} onOpenLink={actions.openLink} muted={t.done} />
     </span>
   );
 }

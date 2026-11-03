@@ -4,11 +4,11 @@ import { CheckSmall, CopyIcon, PaperclipIcon } from './icons';
 import { useAssets } from '../assets';
 
 /** A file in the vault, shown with a paperclip; click opens it in its default app. */
-export function AttachmentChip({ label, target, wiki }: { label: string; target: string; wiki: boolean }) {
+export function AttachmentChip({ label, target, wiki, done }: { label: string; target: string; wiki: boolean; done?: boolean }) {
   const assets = useAssets();
   const rel = assets.resolve(target, wiki);
   return (
-    <span data-link="1" className={'attachment' + (rel ? '' : ' missing')} title={rel ? `Open ${rel}` : `Not found in the vault: ${target}`}
+    <span data-link="1" className={'attachment' + (rel ? '' : ' missing') + (done ? ' done' : '')} title={rel ? `Open ${rel}` : `Not found in the vault: ${target}`}
       onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
       onClick={e => { e.stopPropagation(); if (rel) assets.open(rel); }}>
       <PaperclipIcon />{label}
@@ -37,8 +37,11 @@ function CodeChip({ text, style }: { text: string; style: CSSProperties }) {
   );
 }
 
-/** Inline Markdown (bold, code, links) with clickable links. Web links open in the browser. */
-export function InlineText({ text, onOpenLink }: { text: string; onOpenLink?: (name: string) => void }) {
+/**
+ * Inline Markdown (bold, code, links) with clickable links. Web links open in the browser.
+ * `muted` styles links and attachments like the surrounding text (done tasks); they still open on click.
+ */
+export function InlineText({ text, onOpenLink, muted }: { text: string; onOpenLink?: (name: string) => void; muted?: boolean }) {
   const click = (e: MouseEvent, tk: InlineTok) => {
     e.stopPropagation();
     if (tk.link) onOpenLink?.(tk.link);
@@ -48,9 +51,9 @@ export function InlineText({ text, onOpenLink }: { text: string; onOpenLink?: (n
     <>
       {inlineToks(text).map(tk => {
         if (tk.code) return <CodeChip key={tk.key} text={tk.text} style={tk.style} />;
-        if (tk.attachment) return <AttachmentChip key={tk.key} label={tk.text} target={tk.attachment} wiki={!!tk.wiki} />;
+        if (tk.attachment) return <AttachmentChip key={tk.key} label={tk.text} target={tk.attachment} wiki={!!tk.wiki} done={muted} />;
         const live = !!tk.href || (!!tk.link && !!onOpenLink);
-        return <span key={tk.key} data-link={live ? '1' : undefined} onClick={live ? e => click(e, tk) : undefined} title={tk.href} style={tk.style}>{tk.text}</span>;
+        return <span key={tk.key} data-link={live ? '1' : undefined} onClick={live ? e => click(e, tk) : undefined} title={tk.href} style={muted && live ? { cursor: 'pointer' } : tk.style}>{tk.text}</span>;
       })}
     </>
   );

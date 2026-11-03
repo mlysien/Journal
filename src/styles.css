@@ -54,6 +54,7 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 .attachment:hover { border-color: var(--accent-ring); color: var(--text); }
 .attachment.missing { cursor: default; color: var(--faint); text-decoration: line-through; text-decoration-color: var(--faint); }
 .attachment.missing:hover { border-color: var(--border); }
+.attachment.done, .attachment.done svg { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--faint); }
 
 /* Images in notes; the open button shows on hover. */
 .note-image { position: relative; display: inline-block; max-width: 100%; margin: 12px 0; }

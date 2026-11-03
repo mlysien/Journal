@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { daysBetween, todayIso } from './dates';
 import { splitBlocks } from './markdown';
-import { isAccent, type Accent, type ThemePref } from './theme';
+import { DEFAULT_ACCENT, isAccent, LEGACY_ACCENTS, type Accent, type ThemePref } from './theme';
 import type { VaultSnapshot } from '../electron/api';
 import { dailyDateOf, dailyPath, DEFAULT_DAILY, formatProblem, isDailyDir, LEGACY_DAILY, normalizeFolder, type DailyLocation } from './dailyFormat';
 import { dailyFileText, parseDailyFile, taskDay } from './dailyTasks';
@@ -147,7 +147,7 @@ interface StateFile {
 
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-const DEFAULT_PREFS: Prefs = { theme: 'system', accent: 'violet', textScale: 'medium', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true,
+const DEFAULT_PREFS: Prefs = { theme: 'system', accent: DEFAULT_ACCENT, textScale: 'medium', lineWidth: 'default', daily: DEFAULT_DAILY, carry: true,
   showPri: true, showAge: true, showCarried: true, sound: true, live: true, spell: false,
   pomo: true, pomoFocus: 25, pomoBreak: 5, pomoLong: 15, pomoAuto: true, pomoSound: true,
   keys: Object.fromEntries(SHORTCUTS.map(s => [s.id, s.default])) as Record<ShortcutId, string>,
@@ -335,7 +335,8 @@ export function fromSnapshot(snap: VaultSnapshot, today: string): Loaded {
   if (saved.meta === false) { saved.showAge ??= false; saved.showCarried ??= false; }
   delete saved.meta;
   saved.keys = { ...DEFAULT_PREFS.keys, ...saved.keys };
-  // Values from earlier versions: the Blue accent and the Default text size.
+  // Values from earlier versions: named accents (and the even older Blue) and the Default text size.
+  if (typeof saved.accent === 'string' && saved.accent in LEGACY_ACCENTS) saved.accent = LEGACY_ACCENTS[saved.accent];
   if (!isAccent(saved.accent)) delete saved.accent;
   if ((saved.textScale as string) === 'default') saved.textScale = 'medium';
   const prefs: Prefs = { ...DEFAULT_PREFS, ...saved, ...(obsidian && !formatProblem(obsidian.format) ? { daily: obsidian } : {}) };

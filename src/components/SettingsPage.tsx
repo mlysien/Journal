@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { FS, MONO } from '../theme';
+import { FS, MONO, parseHex } from '../theme';
 import { SHORTCUTS, type Prefs, type ShortcutId } from '../vault';
 import { keyLabel, keyName } from '../keys';
 import { updateText, useUpdate } from '../update';
@@ -13,7 +13,8 @@ type Row =
   | { kind: 'shortcut'; label: string; desc: string; id: ShortcutId }
   | { kind: 'update'; label: string; desc: string }
   | { kind: 'path'; label: string; desc: string; value: string; actions?: [string, () => void][] }
-  | { kind: 'daily'; label: string; desc: string };
+  | { kind: 'daily'; label: string; desc: string }
+  | { kind: 'color'; label: string; desc: string };
 
 const segBtn = (on: boolean): CSSProperties => ({ border: 'none', fontFamily: 'inherit', fontSize: FS.sm, padding: '4px 12px', borderRadius: 5, cursor: 'pointer', background: on ? 'var(--bg)' : 'transparent', color: on ? 'var(--text)' : 'var(--muted)', boxShadow: on ? '0 0 0 1px var(--border)' : 'none' });
 
@@ -74,6 +75,31 @@ function MinutesField({ value, onChange }: { value: number; onChange: (v: number
   );
 }
 
+/** A colour swatch; click it to type or paste a hex code, which applies as soon as it is valid. */
+function ColorField({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  // The colour before editing, which Esc puts back.
+  const [before, setBefore] = useState(value);
+  const box: CSSProperties = { width: 96, height: 28, boxSizing: 'border-box', borderRadius: 6, flex: 'none' };
+  if (draft === null) return (
+    <button onClick={() => { setBefore(value); setDraft(value); }} title={`${value}. Click to change`} aria-label={`Accent colour ${value}. Click to change`}
+      style={{ ...box, border: '1px solid var(--border-strong)', background: value, padding: 0, cursor: 'pointer' }} />
+  );
+  const parsed = parseHex(draft);
+  const edit = (text: string) => { setDraft(text); const hex = parseHex(text); if (hex && hex !== value) onChange(hex); };
+  return (
+    <input autoFocus value={draft} spellCheck={false} aria-label="Accent colour, hex" placeholder="#8582cc"
+      onFocus={e => e.currentTarget.select()}
+      onChange={e => edit(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === 'Escape' && value !== before) onChange(before);
+        if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setDraft(null); }
+      }}
+      onBlur={() => setDraft(null)}
+      style={{ ...box, border: `1px solid ${parsed ? 'var(--accent-ring)' : 'var(--pri-h)'}`, background: 'var(--elev)', color: 'var(--text)', fontFamily: MONO, fontSize: FS.sm, padding: '0 8px', outline: 'none' }} />
+  );
+}
+
 /** Folder and file name format for daily notes, applied with a button because it moves files. */
 function DailyLocationEditor({ prefs, today, onApply }: { prefs: Prefs; today: string; onApply: Props['onDailyLocation'] }) {
   const [folder, setFolder] = useState(prefs.daily.folder);
@@ -131,7 +157,7 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
     { label: 'Appearance', rows: [
       { kind: 'seg', label: 'Theme', desc: 'System follows your computer’s light or dark mode.', options: [['system', 'System'], ['dark', 'Dark'], ['light', 'Light']], value: prefs.theme, set: k => setPrefs({ theme: k as Prefs['theme'] }) },
       { kind: 'seg', label: 'Text size', desc: 'Scales text and spacing across the app.', options: [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], value: prefs.textScale, set: k => setPrefs({ textScale: k as Prefs['textScale'] }) },
-      { kind: 'seg', label: 'Accent', desc: 'Used for links, focus rings and checked tasks.', options: [['violet', 'Violet'], ['teal', 'Teal'], ['amber', 'Amber']], value: prefs.accent, set: k => setPrefs({ accent: k as Prefs['accent'] }) },
+      { kind: 'color', label: 'Accent', desc: 'Used for links, focus rings and checked tasks. Click the colour to enter a hex code.' },
     ] },
     { label: 'Daily notes', rows: [
       { kind: 'toggle', key: 'carry', label: 'Carry over unfinished tasks', desc: 'Open tasks move into the next day’s note when it is created.' },
@@ -186,6 +212,7 @@ export function SettingsPage({ prefs, setPrefs, root, today, onDailyLocation, on
                   {r.options.map(([k, l]) => <button key={k} onClick={() => r.set(k)} style={segBtn(r.value === k)}>{l}</button>)}
                 </div>
               )}
+              {r.kind === 'color' && <ColorField value={prefs.accent} onChange={accent => setPrefs({ accent })} />}
               {r.kind === 'minutes' && <MinutesField value={prefs[r.key]} onChange={v => setPrefs({ [r.key]: v })} />}
               {r.kind === 'update' && (() => {
                 const busy = update.state === 'checking' || update.state === 'downloading' || update.state === 'unsupported';

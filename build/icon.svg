@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Journal app icon: a notebook covered in developer stickers. -->
+
+  <!-- Notebook cover -->
+  <rect x="70" y="36" width="350" height="440" rx="40" fill="#E0806A"/>
+  <!-- Spine (right edge) -->
+  <path d="M388 36h4a32 32 0 0 1 32 32v376a32 32 0 0 1 -32 32h-4z" fill="#CF684F"/>
+  <!-- Page edge along the bottom -->
+  <rect x="96" y="410" width="328" height="40" rx="20" fill="#F7F5F1"/>
+  <path d="M388 410h36v40h-36z" fill="#DCD9EC"/>
+
+  <!-- Closing strap with snap -->
+  <rect x="356" y="196" width="88" height="84" rx="24" fill="#A9675B"/>
+  <circle cx="398" cy="238" r="16" fill="#F7F5F1"/>
+
+  <!-- "Code" label lines, top right -->
+  <g stroke-linecap="round" stroke-width="15">
+    <line x1="268" y1="84" x2="300" y2="84" stroke="#6A5C66"/>
+    <line x1="318" y1="84" x2="350" y2="84" stroke="#FFE15E"/>
+    <line x1="292" y1="116" x2="350" y2="116" stroke="#6A5C66"/>
+  </g>
+
+  <!-- Sticker 1: hexagon with a git branch -->
+  <g transform="translate(168 132)">
+    <polygon points="0,-74 64,-37 64,37 0,74 -64,37 -64,-37" fill="#F7F5F1" stroke="#F7F5F1" stroke-width="10" stroke-linejoin="round"/>
+    <polygon points="0,-58 50,-29 50,29 0,58 -50,29 -50,-29" fill="#3D3A4F" stroke="#3D3A4F" stroke-width="8" stroke-linejoin="round"/>
+    <g fill="none" stroke="#7EE0A1" stroke-width="9" stroke-linecap="round">
+      <line x1="-14" y1="-22" x2="-14" y2="26"/>
+      <path d="M18 -12 v6 a20 20 0 0 1 -20 20 h-2 a10 10 0 0 0 -10 10"/>
+    </g>
+    <g fill="#3D3A4F" stroke="#7EE0A1" stroke-width="8">
+      <circle cx="-14" cy="-28" r="9"/>
+      <circle cx="-14" cy="32" r="9"/>
+      <circle cx="18" cy="-20" r="9"/>
+    </g>
+  </g>
+
+  <!-- Sticker 2: round terminal prompt -->
+  <g transform="translate(152 318)">
+    <circle r="66" fill="#F7F5F1"/>
+    <circle r="50" fill="#9AD3FF"/>
+    <g fill="none" stroke="#2F3448" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="-26,-16 -6,2 -26,20"/>
+      <line x1="4" y1="22" x2="28" y2="22"/>
+    </g>
+  </g>
+
+  <!-- Sticker 3: tilted label with </> -->
+  <g transform="translate(290 304) rotate(-14)">
+    <rect x="-74" y="-42" width="148" height="84" rx="16" fill="#FFE15E"/>
+    <g fill="none" stroke="#F0892E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="-22,-18 -44,0 -22,18"/>
+      <polyline points="22,-18 44,0 22,18"/>
+      <line x1="9" y1="-22" x2="-9" y2="22"/>
+    </g>
+  </g>
+
+  <!-- Sticker 4: small purple curly braces stamp -->
+  <g transform="translate(300 196) rotate(10)">
+    <rect x="-34" y="-28" width="68" height="56" rx="14" fill="#C99BE8"/>
+    <g fill="none" stroke="#F7F5F1" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M-8 -16 h-4 a6 6 0 0 0 -6 6 v4 l-6 6 l6 6 v4 a6 6 0 0 0 6 6 h4"/>
+      <path d="M8 -16 h4 a6 6 0 0 1 6 6 v4 l6 6 l-6 6 v4 a6 6 0 0 1 -6 6 h-4"/>
+    </g>
+  </g>
+</svg>

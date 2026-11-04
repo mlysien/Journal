@@ -87,7 +87,7 @@ export interface InlineTok {
 const LINK: CSSProperties = { color: 'var(--accent)', textDecoration: 'underline', textDecorationColor: 'var(--accent-soft)', textUnderlineOffset: 3, cursor: 'pointer' };
 
 export function inlineToks(src: string): InlineTok[] {
-  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(!?\[\[[^\]]+\]\])|(!?\[(?:\\.|[^\]\\])*\]\([^)\s]+\))|<(https?:\/\/[^\s>]+)>|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])/g;
+  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(!?\[\[[^\]]+\]\])|(!?\[(?:\\.|[^\]\\])*\]\([^)\s]+\))|<(https?:\/\/[^\s>]+)>|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])|(~~[^~]+~~)/g;
   const out: InlineTok[] = [];
   let last = 0, k = 0, m: RegExpExecArray | null;
   const push = (text: string, style: CSSProperties = {}, extra: Partial<InlineTok> = {}) =>
@@ -109,7 +109,8 @@ export function inlineToks(src: string): InlineTok[] {
       const label = mm[1].replace(/\\([[\]])/g, '$1');
       if (!hasScheme(mm[2])) push(label || fileOf(mm[2]), {}, { attachment: mm[2] });
       else push(label || mm[2], LINK, { href: mm[2] });
-    } else push(m[6] ?? m[7], LINK, { href: m[6] ?? m[7] });
+    } else if (m[8]) push(s.slice(2, -2), { textDecoration: 'line-through', color: 'var(--text-2)' });
+    else push(m[6] ?? m[7], LINK, { href: m[6] ?? m[7] });
     last = re.lastIndex;
   }
   if (last < src.length) push(src.slice(last));
@@ -155,4 +156,4 @@ export function codeToks(line: string, lang: string): CodeTok[] {
 }
 
 export const wordsOf = (L: string[]) =>
-  L.join(' ').replace(/[#*`>\-[\]|]/g, ' ').split(/\s+/).filter(Boolean).length;
+  L.join(' ').replace(/[#*`~>\-[\]|]/g, ' ').split(/\s+/).filter(Boolean).length;

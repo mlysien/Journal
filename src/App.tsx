@@ -9,6 +9,7 @@ import {
   type Loaded, type Pri, type Prefs, type ShortcutId, type TabId,
 } from './vault';
 import { keyName } from './keys';
+import { formatOf } from './format';
 import { playDone } from './sound';
 import { clock, usePomodoro } from './pomodoro';
 import { useUpdate } from './update';
@@ -79,6 +80,8 @@ export function App({ initial }: { initial: Loaded }) {
     const onKey = (e: KeyboardEvent) => {
       // While a shortcut is being recorded in Settings, keys go to it.
       if ((e.target as HTMLElement | null)?.closest?.('[data-recording]')) return;
+      // In a note, Ctrl+B, Ctrl+I and the other formatting keys format the text.
+      if (formatOf(e) && (e.target as HTMLElement | null)?.closest?.('[data-editor]')) return;
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && k === 'f') { e.preventDefault(); setSearching(s => !s); return; }
       const name = keyName(e);

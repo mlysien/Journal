@@ -7,6 +7,7 @@ import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
 import { AttachmentChip, InlineText } from './InlineText';
 import { Check, ExternalIcon } from './icons';
 import { playDone } from '../sound';
+import { formatOf, inlineEdit, isInline, isKind, lineEdit, type FormatId } from '../format';
 
 const P: CSSProperties = { fontSize: FS.body, lineHeight: 1.72, fontWeight: 400, margin: 0 };
 const TYPE: Record<string, CSSProperties> = {
@@ -22,6 +23,8 @@ type Caret = number | 'end' | null;
  * The `- ` that starts a bullet line. It stays a bullet while the line is edited: the text box
  * holds only what comes after it, so carets inside the editor count from the start of the line.
  */
+/** Code blocks and tables, which are edited as several lines at once. */
+const isMulti = (src: string) => src.startsWith('```') || src.startsWith('|');
 const bulletOf = (src: string) => (parseBlock(src).type === 'li' ? src.match(/^\s*[-*]\s/)![0] : '');
 const Bullet = () => (
   <span style={{ width: 22, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted)' }} /></span>
@@ -131,6 +134,15 @@ export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, f
     else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(null); caret.current = 'end'; setFocus(selHi); }
     else if (e.key === 'Escape') { e.preventDefault(); setSel(null); }
     else if (mod && k === 'a') { e.preventDefault(); selectLines(0, blocks.length - 1); }
+    else if (formatOf(e) && !isInline(formatOf(e)!)) {
+      // Make every selected line that kind of line, or all plain text when they already are.
+      e.preventDefault();
+      const id = formatOf(e) as Exclude<FormatId, 'bold' | 'italic' | 'strike' | 'code' | 'link'>;
+      const lines = blocks.slice(selLo, selHi + 1).filter(l => !isMulti(l));
+      const on = id === 'check' ? lines.some(l => /^\s*- \[ \]/.test(l)) : lines.some(l => !isKind(l, id));
+      if (id === 'check' && on && sound) playDone();
+      update(A => { for (let j = selLo; j <= selHi; j++) if (!isMulti(A[j])) A[j] = lineEdit(A[j], id, on)?.line ?? A[j]; });
+    }
     else if (mod && (k === 'c' || k === 'x')) {
       e.preventDefault();
       window.journal.copyText(blocks.slice(selLo, selHi + 1).join('\n')).catch(() => {});
@@ -152,6 +164,12 @@ export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, f
     const pos = ta.selectionStart + off, end = ta.selectionEnd + off, val = bullet + ta.value;
     const multi = val.startsWith('```') || val.startsWith('|');
     if (e.key === 'Escape') { e.preventDefault(); ta.blur(); setFocus(null); return; }
+    const fmt = formatOf(e);
+    if (fmt) {
+      // Code blocks, tables and images keep the keys' usual meaning (which is mostly none).
+      if (multi || parseBlock(val).type === 'image') return;
+      e.preventDefault(); format(fmt, ta, i); return;
+    }
     // Shift+↑/↓ select within the line first, then whole lines.
     if (e.shiftKey && e.key === 'ArrowUp' && ta.selectionStart === 0 && (ta.selectionDirection !== 'forward' || ta.selectionEnd === 0)) {
       e.preventDefault(); selectLines(i, i - 1); return;
@@ -195,6 +213,34 @@ export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, f
     }
     if (e.key === 'ArrowDown' && i < blocks.length - 1 && val.indexOf('\n', pos) === -1 && (!multi || pos === val.length)) {
       e.preventDefault(); caret.current = 0; setFocus(i + 1);
+    }
+  };
+
+  /** Apply a formatting shortcut to line `i`, whose text box is `ta`. */
+  const format = (id: FormatId, ta: HTMLTextAreaElement, i: number) => {
+    const bullet = bulletOf(blocks[i]), off = bullet.length;
+    // Edits go through the text box where they can, so Ctrl+Z undoes them.
+    const replace = (from: number, to: number, text: string) => {
+      ta.setSelectionRange(from, to);
+      document.execCommand(text ? 'insertText' : 'delete', false, text);
+    };
+    if (isInline(id)) {
+      const ed = inlineEdit(ta.value, ta.selectionStart, ta.selectionEnd, id);
+      replace(ed.from, ed.to, ed.text);
+      ta.setSelectionRange(ed.selStart, ed.selEnd);
+      return;
+    }
+    const val = bullet + ta.value, r = lineEdit(val, id);
+    if (!r) return;
+    if (id === 'check' && sound && isKind(r.line, 'check')) playDone();
+    const start = Math.max(r.at, ta.selectionStart + off + r.shift), end = Math.max(r.at, ta.selectionEnd + off + r.shift);
+    const nb = bulletOf(r.line);
+    if (nb === bullet) {
+      replace(0, ta.value.length, r.line.slice(nb.length));
+      ta.setSelectionRange(start - nb.length, end - nb.length);
+    } else {
+      // Becoming a bullet or no longer one swaps the text box, so the line is changed directly.
+      mutate(A => { A[i] = r.line; }, i, start);
     }
   };
 
@@ -317,7 +363,7 @@ export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, f
   };
 
   return (
-    <div ref={root} tabIndex={-1} onKeyDown={onSelKey} onBlur={e => { if (e.target === e.currentTarget) setSel(null); }}
+    <div ref={root} data-editor="" tabIndex={-1} onKeyDown={onSelKey} onBlur={e => { if (e.target === e.currentTarget) setSel(null); }}
       style={{ color: 'var(--text)', outline: 'none' }} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={e => { if (e.currentTarget === e.target) setDropAt(null); }}>
       {blocks.map((src, i) => {
         const pb = parseBlock(src), editing = focus === i, bullet = editing ? bulletOf(src) : '';

@@ -81,11 +81,21 @@ Hover over one of today's tasks and click the tomato to start a 25-minute pomodo
 | Editor | Backspace at the start of a bullet | turn it back into a plain line |
 | Editor | Shift+↑ / ↓, Shift+click | select whole lines, then copy, cut, delete or type over them |
 | Editor | Esc | stop editing |
+| Editor | Ctrl+B / Ctrl+I | bold / italic |
+| Editor | Ctrl+Shift+X | ~~strikethrough~~ |
+| Editor | Ctrl+E | `inline code` |
+| Editor | Ctrl+Shift+K | link (the selected text becomes its label, or a selected URL its address) |
+| Editor | Ctrl+1 / 2 / 3 | heading 1 / 2 / 3 |
+| Editor | Ctrl+0 | plain text |
+| Editor | Ctrl+Shift+8 / 9 / . | bullet / checklist item / quote |
+| Editor | Ctrl+Enter | check or uncheck a checklist item |
 | Note title | Enter | start writing the note |
 | Anywhere | Ctrl+D | open today's daily note |
 | Anywhere | Ctrl+K | search |
 | Anywhere | Ctrl+N | new note |
 | Anywhere | Ctrl+W / Ctrl+Shift+T | close tab / reopen the last closed tab |
 | Anywhere | Ctrl+\\ | show or hide the sidebar |
+
+The bold, italic, strikethrough and code keys work on the selected text, or on the word at the caret, and pressing one again removes the formatting. The line keys work on the line being edited or on all selected lines, and pressing one again turns them back into plain text. While you're editing a note, these keys win over the **Anywhere** shortcuts, so Ctrl+I makes text italic there rather than opening the Inbox.
 
 The shortcuts under **Anywhere** can be changed in **Settings → Keyboard shortcuts**. **Settings → System → Start at login** opens Journal when you sign in (an autostart entry in `~/.config/autostart` on Linux, a login item on Windows).

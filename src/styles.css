@@ -134,3 +134,11 @@ textarea::placeholder, input::placeholder { color: var(--faint); opacity: 1; }
 .note-editor .cm-missing { margin: 12px 0; padding: 18px 20px; border: 1px dashed var(--border-strong); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; cursor: text; }
 .note-editor .cm-missing-name { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .note-editor .cm-missing-note { font-size: 13px; color: var(--faint); }
+
+/* The sidebar's doodle pattern (see doodle.ts and Doodle.tsx): faint, turned a little, behind the sidebar's
+   content and never in the way of clicks. The layer is larger than the sidebar so the turned pattern still
+   covers its corners; the wrapper clips it. */
+.doodle-host { position: relative; isolation: isolate; }
+.doodle-pattern { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.doodle-pattern::before { content: ''; position: absolute; inset: -60%; transform: rotate(-12deg); background: var(--faint); opacity: 0.16;
+  -webkit-mask: var(--doodle) 0 0 / var(--doodle-size) repeat; mask: var(--doodle) 0 0 / var(--doodle-size) repeat; }

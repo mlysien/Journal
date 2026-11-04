@@ -10,6 +10,7 @@ import {
 import { addDays, dayLabel } from './Tasks';
 import { formatDate } from '../dailyFormat';
 import { keyLabel } from '../keys';
+import { DoodlePattern } from './Doodle';
 
 interface Props {
   vault: Vault;
@@ -362,7 +363,8 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
   };
 
   return (
-    <aside ref={aside} style={{ width: ui.sidebarWidth, flex: 'none', position: 'relative', display: 'flex', flexDirection: 'column', background: 'var(--side)', borderRight: '1px solid var(--border)', minHeight: 0 }}>
+    <aside ref={aside} className="doodle-host" style={{ width: ui.sidebarWidth, flex: 'none', position: 'relative', display: 'flex', flexDirection: 'column', background: 'var(--side)', borderRight: '1px solid var(--border)', minHeight: 0 } as CSSProperties}>
+      <DoodlePattern />
       <div style={{ padding: '8px 8px 4px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <NavLink act={!!inbox && active === 'note:' + inbox.id} onClick={onInbox} icon={<InboxIcon />} label="Inbox" meta={inboxCount ? String(inboxCount) : keyLabel(vault.prefs.keys.inbox, window.journal.platform)} metaStyle={{ fontVariantNumeric: 'tabular-nums' }} />
         <NavLink act={active === 'daily:' + today} onClick={() => open('daily:' + today)} icon={<CalendarIcon />} label="Today" meta={fmt(today, { month: 'short', day: 'numeric' })} />
@@ -483,3 +485,4 @@ export function Sidebar({ vault, ui, setUi, today, zoom, dates, todayOpen, open,
     </aside>
   );
 }
+

@@ -70,6 +70,43 @@ const editAt = (view: EditorView, dom: HTMLElement) => {
   view.focus();
 };
 
+const COPY = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg>';
+const COPIED = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+
+/** Inline `code` with a copy button that shows on hover (and briefly after copying). */
+function codeChip(text: string): HTMLElement {
+  const chip = el('span', 'cm-icode code-chip', text);
+  const btn = el('button', 'code-copy');
+  btn.title = 'Copy'; btn.setAttribute('aria-label', 'Copy to clipboard');
+  btn.append(svg(COPY));
+  btn.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    window.journal.copyText(text).then(() => {
+      chip.classList.add('copied'); btn.title = 'Copied'; btn.replaceChildren(svg(COPIED));
+      setTimeout(() => { chip.classList.remove('copied'); btn.title = 'Copy'; btn.replaceChildren(svg(COPY)); }, 1200);
+    }).catch(() => {});
+  });
+  chip.append(btn);
+  return chip;
+}
+
+class CodeChipWidget extends WidgetType {
+  constructor(readonly text: string) { super(); }
+  eq(o: CodeChipWidget) { return o.text === this.text; }
+  toDOM(view: EditorView) {
+    const chip = codeChip(this.text);
+    // Clicking the code itself edits it: the caret goes inside the backticks.
+    chip.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      view.dispatch({ selection: { anchor: view.posAtDOM(chip) + 1 } });
+      view.focus();
+    });
+    return chip;
+  }
+  ignoreEvent() { return true; }
+}
+
 class BulletWidget extends WidgetType {
   eq() { return true; }
   toDOM() { const s = el('span', 'cm-bullet'); s.append(el('span')); return s; }
@@ -180,8 +217,9 @@ class CodeWidget extends WidgetType {
 function inlineDom(text: string, ctx: PreviewCtx): Node[] {
   return inlineToks(text).map(tk => {
     if (tk.attachment) return new FileWidget(tk.text, ctx.resolve(tk.attachment, !!tk.wiki), tk.attachment, ctx).toDOM();
-    const s = el('span', tk.code ? 'cm-icode' : '', tk.text);
-    if (!tk.code) s.style.cssText = css(tk.style as Record<string, unknown>);
+    if (tk.code) return codeChip(tk.text);
+    const s = el('span', '', tk.text);
+    s.style.cssText = css(tk.style as Record<string, unknown>);
     if (tk.href) s.dataset.href = tk.href;
     if (tk.link) s.dataset.note = tk.link;
     return s;
@@ -374,10 +412,18 @@ function build(state: EditorState, ctx: PreviewCtx): DecorationSet {
         if (!raw(from)) add(from, to, Decoration.replace({ widget: new HrWidget() }));
         return false;
       }
-      if (name === 'Emphasis' || name === 'StrongEmphasis' || name === 'Strikethrough' || name === 'InlineCode') {
-        add(from, to, mark({ Emphasis: 'cm-em', StrongEmphasis: 'cm-strong', Strikethrough: 'cm-strike', InlineCode: 'cm-icode' }[name]));
-        if (!raw(from)) for (const m of children(node, name === 'InlineCode' ? 'CodeMark' : name === 'Strikethrough' ? 'StrikethroughMark' : 'EmphasisMark')) add(m.from, m.to, hide);
-        return name === 'InlineCode' ? false : undefined;
+      if (name === 'InlineCode') {
+        // Drawn as a chip with a copy button; on the line being edited, as styled Markdown.
+        if (raw(from)) { add(from, to, mark('cm-icode')); return false; }
+        const marks = children(node, 'CodeMark');
+        const text = marks.length >= 2 ? doc.sliceString(marks[0].to, marks[marks.length - 1].from) : doc.sliceString(from, to);
+        add(from, to, Decoration.replace({ widget: new CodeChipWidget(text.trim() ? text.replace(/^ (.*) $/, '$1') : text) }));
+        return false;
+      }
+      if (name === 'Emphasis' || name === 'StrongEmphasis' || name === 'Strikethrough') {
+        add(from, to, mark({ Emphasis: 'cm-em', StrongEmphasis: 'cm-strong', Strikethrough: 'cm-strike' }[name]));
+        if (!raw(from)) for (const m of children(node, name === 'Strikethrough' ? 'StrikethroughMark' : 'EmphasisMark')) add(m.from, m.to, hide);
+        return;
       }
       if (name === 'Link' || name === 'Image') {
         if (inWiki(from, to)) return false;

@@ -3,7 +3,7 @@
 A local-first Markdown journal for daily notes and a todo list. Desktop app for Linux and Windows, built with Electron.
 
 - **Daily note**: one note per day, with a task list at the top. Unchecked tasks carry over to the next day on their own, and each task shows its age and carry-over count.
-- **Notes**: Markdown with live preview. Click a line to edit its raw Markdown. Supports headings, lists, `- [ ]` checkboxes, quotes, fenced code with highlighting, tables, `[[wiki links]]`, and images and files as attachments.
+- **Notes**: Markdown with live preview, edited as one text like in Obsidian: select, copy and paste across lines as in any text editor. The line with the caret shows its raw Markdown; the rest shows formatted. Supports headings, lists, `- [ ]` checkboxes, quotes, fenced code with highlighting, tables, `[[wiki links]]`, and images and files as attachments.
 - **Checklists in notes**: `- [ ]` lines work in any note. Add `!high` or `!low` to the end of one to mark its priority.
 
 ## Your vault
@@ -79,7 +79,8 @@ Hover over one of today's tasks and click the tomato to start a 25-minute pomodo
 | Focused task | T | start a pomodoro, or pause / resume it |
 | Editor | Enter | new line, continuing lists and checkboxes |
 | Editor | Backspace at the start of a bullet | turn it back into a plain line |
-| Editor | Shift+↑ / ↓, Shift+click | select whole lines, then copy, cut, delete or type over them |
+| Editor | Tab / Shift+Tab | indent / outdent the line |
+| Editor | Ctrl+click a link | open it from the line being edited (elsewhere a click opens it) |
 | Editor | Esc | stop editing |
 | Editor | Ctrl+B / Ctrl+I | bold / italic |
 | Editor | Ctrl+Shift+X | ~~strikethrough~~ |

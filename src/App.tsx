@@ -94,18 +94,6 @@ export function App({ initial }: { initial: Loaded }) {
   }, []);
   const latestKeys = useRef(prefs.keys);
   latestKeys.current = prefs.keys;
-  useEffect(() => {
-    if (!jump || jump.tab !== active) return;
-    const id = requestAnimationFrame(() => {
-      const el = scroller.current?.querySelector<HTMLElement>(`[data-bi="${jump.block}"]`);
-      if (el) {
-        el.scrollIntoView({ block: 'center' });
-        el.classList.remove('search-hit'); void el.offsetWidth; el.classList.add('search-hit');
-      }
-      setJump(null);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [jump, active]);
   const theme = useResolvedTheme(prefs.theme);
   useEffect(() => { window.journal.setTitleBar(TITLE_BAR[theme]); }, [theme]);
   useEffect(() => {
@@ -356,7 +344,8 @@ export function App({ initial }: { initial: Loaded }) {
                   <Editor key={active} blocks={blocks} update={updateDoc} isDaily={!!date} live={prefs.live} spell={prefs.spell}
                     showPri={prefs.showPri} sound={prefs.sound} focusStart={focusStart}
                     onOpenLink={openByTitle} autoFocus={!!note && justCreated?.id === note.id && justCreated.focus === 'body'}
-                    noteDir={noteDir} onAssetsAdded={addAssets} />
+                    noteDir={noteDir} onAssetsAdded={addAssets}
+                    jump={jump?.tab === active ? jump.block : null} onJumped={() => setJump(null)} />
                 </div>
               )}
 

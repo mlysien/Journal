@@ -21,10 +21,10 @@ export type Block =
   | { type: 'p'; text: string };
 
 /** `https:`, `mailto:` and the like; links without one point at files in the vault. */
-const hasScheme = (href: string) => /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#');
-const fileOf = (href: string) => { const f = href.split('/').pop() ?? href; try { return decodeURIComponent(f); } catch { return f; } };
+export const hasScheme = (href: string) => /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#');
+export const fileOf = (href: string) => { const f = href.split('/').pop() ?? href; try { return decodeURIComponent(f); } catch { return f; } };
 /** `[[x]]` names a file rather than a note when it has an extension other than .md. */
-const isFileName = (name: string) => /\.[a-z0-9]{1,6}$/i.test(name) && !/\.md$/i.test(name);
+export const isFileName = (name: string) => /\.[a-z0-9]{1,6}$/i.test(name) && !/\.md$/i.test(name);
 
 export function parseBlock(src: string): Block {
   if (src.startsWith('```')) {

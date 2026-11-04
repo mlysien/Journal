@@ -1,34 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
-import { codeToks, parseBlock, type Block } from '../markdown';
-import { FS, MONO, UI } from '../theme';
-import { PRI, splitPriMark } from '../vault';
-import { filesFromClipboard, isImage, mayHoldFiles, saveIncoming, useAssets, vaultUrl, type Incoming } from '../assets';
-import { insideLinkSyntax, isUrl, pasteUrl } from '../links';
-import { AttachmentChip, InlineText } from './InlineText';
-import { Check, ExternalIcon } from './icons';
+import { useEffect, useRef, type CSSProperties, type MouseEvent } from 'react';
+import { MONO, UI } from '../theme';
+import { EditorSelection, EditorState, type ChangeSpec, type SelectionRange } from '@codemirror/state';
+import { EditorView, dropCursor, keymap, placeholder } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from '@codemirror/commands';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { syntaxTree } from '@codemirror/language';
+import { splitBlocks } from '../markdown';
+import { filesFromClipboard, mayHoldFiles, saveIncoming, useAssets, type Incoming } from '../assets';
+import { insideLinkSyntax, isUrl, mdLink, urlLabel } from '../links';
+import { formatOf, inlineEdit, isInline, isKind, lineEdit, type FormatId, type LineFormat } from '../format';
+import { flash, flashLine, livePreview, refresh, type PreviewCtx } from '../livePreview';
 import { playDone } from '../sound';
-import { formatOf, inlineEdit, isInline, isKind, lineEdit, type FormatId } from '../format';
-
-const P: CSSProperties = { fontSize: FS.body, lineHeight: 1.72, fontWeight: 400, margin: 0 };
-const TYPE: Record<string, CSSProperties> = {
-  h1: { fontSize: FS.h1, fontWeight: 600, lineHeight: 1.3, letterSpacing: '-0.02em', margin: '30px 0 8px' },
-  h2: { fontSize: FS.h2, fontWeight: 600, lineHeight: 1.45, letterSpacing: '-0.012em', margin: '28px 0 6px' },
-  h3: { fontSize: FS.h3, fontWeight: 600, lineHeight: 1.5, margin: '22px 0 4px' },
-  quote: { ...P, margin: '8px 0', paddingLeft: 16, borderLeft: '2px solid var(--border-strong)', color: 'var(--text-2)', fontStyle: 'italic' },
-};
-
-type Caret = number | 'end' | null;
-
-/**
- * The `- ` that starts a bullet line. It stays a bullet while the line is edited: the text box
- * holds only what comes after it, so carets inside the editor count from the start of the line.
- */
-/** Code blocks and tables, which are edited as several lines at once. */
-const isMulti = (src: string) => src.startsWith('```') || src.startsWith('|');
-const bulletOf = (src: string) => (parseBlock(src).type === 'li' ? src.match(/^\s*[-*]\s/)![0] : '');
-const Bullet = () => (
-  <span style={{ width: 22, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--muted)' }} /></span>
-);
 
 interface Props {
   blocks: string[];
@@ -43,367 +25,246 @@ interface Props {
   /** Changes when the caret should go to the start of the note (Enter in the title). */
   focusStart?: number;
   onOpenLink: (name: string) => void;
-  /** Start with the caret in the first block (a freshly created note). */
+  /** Start with the caret at the start of the note (a freshly created note). */
   autoFocus?: boolean;
   /** Vault folder of this note; pasted files go into its Attachments subfolder. */
   noteDir: string;
   /** Called with the vault paths of files saved by a paste or drop. */
   onAssetsAdded: (rels: string[]) => void;
+  /** A block to scroll to and flash, as from a search result. */
+  jump?: number | null;
+  onJumped?: () => void;
 }
 
-export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, focusStart, onOpenLink, autoFocus, noteDir, onAssetsAdded }: Props) {
+/** Inside a code block, inline code or a table, where Markdown shortcuts don't apply. */
+const inCode = (state: EditorState, pos: number) => {
+  for (let n: ReturnType<typeof syntaxTree>['topNode'] | null = syntaxTree(state).resolveInner(pos, -1); n; n = n.parent)
+    if (n.name === 'FencedCode' || n.name === 'InlineCode') return true;
+  return state.doc.lineAt(pos).text.startsWith('|');
+};
+
+/** Apply a formatting shortcut to the selection. */
+function applyFormat(view: EditorView, id: FormatId, sound: boolean) {
+  const { state } = view, doc = state.doc;
+  if (isInline(id)) {
+    const r = state.selection.main, l = doc.lineAt(r.from);
+    if (doc.lineAt(r.to).number !== l.number || inCode(state, r.from)) return;
+    const ed = inlineEdit(l.text, r.from - l.from, r.to - l.from, id);
+    view.dispatch({ changes: { from: l.from + ed.from, to: l.from + ed.to, insert: ed.text }, selection: EditorSelection.single(l.from + ed.selStart, l.from + ed.selEnd), userEvent: 'input.format', scrollIntoView: true });
+    return;
+  }
+  // Line formats: every line the selection touches becomes that kind of line, or all plain text when they already are.
+  const lines = new Map<number, { from: number; text: string }>();
+  for (const r of state.selection.ranges)
+    for (let n = doc.lineAt(r.from).number; n <= doc.lineAt(r.to).number; n++) {
+      const l = doc.line(n);
+      if (!inCode(state, l.from)) lines.set(n, { from: l.from, text: l.text });
+    }
+  if (!lines.size) return;
+  const all = [...lines.values()], lid = id as LineFormat;
+  const on = lid === 'check' ? all.some(l => /^\s*- \[ \]/.test(l.text)) : all.some(l => !isKind(l.text, lid));
+  const changes: ChangeSpec[] = [];
+  /** Where each changed line's text after its prefix moved, to carry the caret along. */
+  const moves: { from: number; oldEnd: number; at: number; shift: number }[] = [];
+  for (const l of all) {
+    const r = lineEdit(l.text, lid, on);
+    if (!r) continue;
+    const oldEnd = r.at - r.shift;
+    changes.push({ from: l.from, to: l.from + oldEnd, insert: r.line.slice(0, r.at) });
+    moves.push({ from: l.from, oldEnd, at: r.at, shift: r.shift });
+  }
+  if (!changes.length) return;
+  if (lid === 'check' && on && sound) playDone();
+  const map = (p: number) => {
+    let delta = 0;
+    for (const m of moves) {
+      if (p < m.from) break;
+      if (p < m.from + m.oldEnd) return m.from + delta + m.at;
+      delta += m.shift;
+    }
+    return p + delta;
+  };
+  view.dispatch({
+    changes,
+    selection: EditorSelection.create(state.selection.ranges.map((r: SelectionRange) => EditorSelection.range(map(r.anchor), map(r.head))), state.selection.mainIndex),
+    userEvent: 'input.format',
+  });
+}
+
+/** Paste a URL as a Markdown link; the label becomes the page title once it's fetched. */
+function pasteUrl(view: EditorView, url: string) {
+  const r = view.state.selection.main, selected = view.state.sliceDoc(r.from, r.to).trim();
+  const draft = mdLink(selected || urlLabel(url), url);
+  view.dispatch(view.state.replaceSelection(draft), { userEvent: 'input.paste' });
+  if (selected) return;
+  window.journal.fetchTitle(url).then(title => {
+    if (!title) return;
+    const at = view.state.doc.toString().indexOf(draft);
+    if (at >= 0) view.dispatch({ changes: { from: at, to: at + draft.length, insert: mdLink(title, url) } });
+  });
+}
+
+export function Editor({ blocks, update, isDaily, live, spell, showPri, sound, focusStart, onOpenLink, autoFocus, noteDir, onAssetsAdded, jump, onJumped }: Props) {
   const assets = useAssets();
-  const [dropAt, setDropAt] = useState<number | null>(null);
+  const host = useRef<HTMLDivElement>(null);
+  const view = useRef<EditorView | null>(null);
+  /** The text last sent to or taken from the vault, to tell our own changes from outside ones. */
+  const synced = useRef(blocks.join('\n'));
+  const ctx = useRef<PreviewCtx>(null!);
+  ctx.current = { resolve: assets.resolve, openFile: assets.open, openNote: onOpenLink, showPri, sound };
+  const props = useRef({ update, noteDir, onAssetsAdded, sound });
+  props.current = { update, noteDir, onAssetsAdded, sound };
 
-  /** Save files and link them: images on their own lines after block `i`, other files inline at the caret. */
-  const attach = async (items: Incoming[], i: number, ta: HTMLTextAreaElement | null, caretPos: number) => {
+  /** Save files and link them: images on lines of their own after the line at `pos`, other files at `pos`. */
+  const attach = async (v: EditorView, items: Incoming[], pos: number, inline: boolean) => {
     let saved;
-    try { saved = await saveIncoming(noteDir, items); } catch (err) { alert(`Could not save the attachment.\n${err instanceof Error ? err.message : err}`); return; }
-    onAssetsAdded(saved.map(s => s.rel));
-    const images = saved.filter(s => s.image).map(s => s.markdown), files = saved.filter(s => !s.image).map(s => s.markdown).join(' ');
-    if (files && ta && document.activeElement === ta) document.execCommand('insertText', false, files);
-    else if (files) update(A => { A[i] = A[i].slice(0, caretPos) + files + A[i].slice(caretPos); });
-    // An empty line is replaced by the images; otherwise they go below it. Either way the caret lands on a fresh line after them.
-    const replace = !blocks[i]?.trim();
-    if (images.length) mutate(A => {
-      if (replace) A.splice(i, 1, ...images, ''); else A.splice(i + 1, 0, ...images, '');
-    }, i + images.length + (replace ? 0 : 1), 0);
+    try { saved = await saveIncoming(props.current.noteDir, items); } catch (err) { alert(`Could not save the attachment.\n${err instanceof Error ? err.message : err}`); return; }
+    props.current.onAssetsAdded(saved.map(s => s.rel));
+    const doc = v.state.doc, at = Math.min(pos, doc.length), l = doc.lineAt(at);
+    const images = saved.filter(s => s.image || !inline).map(s => s.markdown), files = saved.filter(s => !s.image && inline).map(s => s.markdown).join(' ');
+    const changes: ChangeSpec[] = [];
+    let caret = at;
+    if (files) { changes.push({ from: at, insert: files }); caret = at + files.length; }
+    if (images.length) {
+      // An empty line is replaced by the images; otherwise they go below it. Either way the caret lands on a fresh line after them.
+      const block = images.join('\n') + '\n';
+      if (!l.text.trim() && !files) { changes.push({ from: l.from, to: l.to, insert: block }); caret = l.from + block.length; }
+      else { changes.push({ from: l.to, insert: '\n' + block }); caret = l.to + (files ? files.length : 0) + 1 + block.length; }
+    }
+    v.dispatch({ changes, selection: { anchor: caret }, userEvent: 'input.paste', scrollIntoView: true });
+    v.focus();
   };
-
-  const onDrop = (e: DragEvent) => {
-    setDropAt(null);
-    if (!e.dataTransfer.files.length) return;
-    e.preventDefault();
-    const at = Number((e.target as HTMLElement).closest('[data-bi]')?.getAttribute('data-bi') ?? blocks.length - 1);
-    const items = Array.from(e.dataTransfer.files).map(f => ({ name: f.name, path: window.journal.pathForFile(f) || undefined, file: f }));
-    // Dropped files always go on lines of their own.
-    saveIncoming(noteDir, items).then(saved => {
-      onAssetsAdded(saved.map(s => s.rel));
-      mutate(A => { A.splice(at + 1, 0, ...saved.map(s => s.markdown)); });
-    }).catch(err => alert(`Could not save the attachment.\n${err instanceof Error ? err.message : err}`));
-  };
-  const onDragOver = (e: DragEvent) => {
-    if (!e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    const at = Number((e.target as HTMLElement).closest('[data-bi]')?.getAttribute('data-bi') ?? blocks.length - 1);
-    if (at !== dropAt) setDropAt(at);
-  };
-
-  const [focus, setFocus] = useState<number | null>(autoFocus ? 0 : null);
-  const [copied, setCopied] = useState<number | null>(null);
-  const caret = useRef<Caret>(null);
-  const onlyEmpty = blocks.length === 1 && blocks[0] === '';
 
   useEffect(() => {
-    if (!focusStart) return;
-    caret.current = 0;
-    setSel(null);
-    setFocus(0);
+    const extensions = [
+      history(),
+      dropCursor(),
+      EditorView.lineWrapping,
+      // Tables, `Text` + `---` headings and indented code are left out: notes keep a line per block
+      // (see splitBlocks), so a table is only its `|` lines and `---` is always a divider.
+      markdown({ base: markdownLanguage, extensions: [{ remove: ['Table', 'SetextHeading', 'IndentedCode'] }] }),
+      keymap.of([
+        { key: 'Tab', run: indentMore, shift: indentLess },
+        { key: 'Escape', run: v => { v.contentDOM.blur(); return true; } },
+        ...historyKeymap,
+        ...defaultKeymap,
+      ]),
+      placeholder(isDaily ? 'How did today go? Markdown renders as you type.' : 'Start writing…'),
+      EditorView.contentAttributes.of({ spellcheck: spell ? 'true' : 'false' }),
+      flash,
+      live ? livePreview(ctx) : [],
+      EditorView.updateListener.of(u => {
+        if (!u.docChanged) return;
+        const text = u.state.doc.toString();
+        if (text === synced.current) return;
+        synced.current = text;
+        const next = splitBlocks(text);
+        props.current.update(A => { A.splice(0, A.length, ...next); });
+      }),
+      EditorView.domEventHandlers({
+        keydown(e, v) {
+          const id = formatOf(e);
+          if (!id) return false;
+          e.preventDefault();
+          applyFormat(v, id, props.current.sound);
+          return true;
+        },
+        mousedown(e, v) {
+          // Rendered links open on click; on a line being edited, with Ctrl+click.
+          const t = (e.target as HTMLElement).closest<HTMLElement>('[data-href],[data-note]');
+          if (!t || e.button !== 0) return false;
+          const editing = v.hasFocus && t.closest('.cm-line') && v.state.selection.ranges.some(r => {
+            const l = v.state.doc.lineAt(v.posAtDOM(t));
+            return r.from <= l.to && r.to >= l.from;
+          });
+          if (editing && !(e.ctrlKey || e.metaKey)) return false;
+          e.preventDefault();
+          if (t.dataset.href) window.journal.openExternal(t.dataset.href);
+          else if (t.dataset.note) ctx.current.openNote(t.dataset.note);
+          return true;
+        },
+        paste(e, v) {
+          const cd = e.clipboardData;
+          if (!cd) return false;
+          const text = cd.getData('text/plain').trim(), pos = v.state.selection.main.head;
+          const code = inCode(v.state, pos), before = v.state.sliceDoc(v.state.doc.lineAt(pos).from, pos);
+          if (text && isUrl(text) && !code && !insideLinkSyntax(before)) { e.preventDefault(); pasteUrl(v, text); return true; }
+          if (code || !mayHoldFiles(cd)) return false;
+          // Files (or what may be paths of copied files): check, then save them or paste the text after all.
+          e.preventDefault();
+          const raw = cd.getData('text/plain');
+          filesFromClipboard(cd).then(items => {
+            if (items?.length) return attach(v, items, pos, true);
+            if (raw) v.dispatch(v.state.replaceSelection(raw), { userEvent: 'input.paste' });
+          });
+          return true;
+        },
+        drop(e, v) {
+          if (!e.dataTransfer?.files.length) return false;
+          e.preventDefault();
+          const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.doc.length;
+          const items = Array.from(e.dataTransfer.files).map(f => ({ name: f.name, path: window.journal.pathForFile(f) || undefined, file: f }));
+          // Dropped files always go on lines of their own.
+          attach(v, items, pos, false);
+          return true;
+        },
+      }),
+    ];
+    const v = new EditorView({
+      parent: host.current!,
+      state: EditorState.create({ doc: synced.current, extensions }),
+    });
+    view.current = v;
+    if (autoFocus) { v.focus(); v.dispatch({ selection: { anchor: 0 } }); }
+    return () => { v.destroy(); view.current = null; };
+    // The editor is made once per note (and when these settings change); props it needs later are read from refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, spell, isDaily]);
+
+  // Changes from elsewhere (the file changed, a task was checked in the sidebar) replace the text.
+  useEffect(() => {
+    const v = view.current, text = blocks.join('\n');
+    if (!v || text === synced.current) return;
+    synced.current = text;
+    if (text === v.state.doc.toString()) return;
+    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text }, annotations: [] });
+  }, [blocks]);
+
+  // Files added or settings changed: redraw links, images and priority dots.
+  useEffect(() => { view.current?.dispatch({ effects: refresh.of(null) }); }, [assets, showPri, sound]);
+
+  useEffect(() => {
+    if (!focusStart || !view.current) return;
+    view.current.focus();
+    view.current.dispatch({ selection: { anchor: 0 }, scrollIntoView: true });
   }, [focusStart]);
 
-  const taRef = useCallback((el: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
-    el.focus();
-    const c = caret.current, off = Number(el.dataset.off || 0);
-    const pos = c == null || c === 'end' ? el.value.length : Math.max(0, Math.min(c - off, el.value.length));
-    el.setSelectionRange(pos, pos);
-    caret.current = null;
-  }, []);
+  useEffect(() => {
+    const v = view.current;
+    if (jump == null || !v) return;
+    // Blocks are lines, except code blocks and tables, which span several.
+    const line = Math.min(v.state.doc.lines, blocks.slice(0, jump).reduce((n, b) => n + b.split('\n').length, 1));
+    const pos = v.state.doc.line(line).from;
+    v.dispatch({ effects: [EditorView.scrollIntoView(pos, { y: 'center' }), flashLine.of(line)] });
+    setTimeout(() => view.current?.dispatch({ effects: flashLine.of(null) }), 1600);
+    onJumped?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump]);
 
-  /**
-   * Whole lines selected with Shift+↑/↓ past the edge of a line (or Shift+click). Each line is its
-   * own text box, so a selection across lines is kept here and the editor handles its keys.
-   */
-  const [sel, setSel] = useState<{ anchor: number; head: number } | null>(null);
-  const root = useRef<HTMLDivElement>(null);
-  const selLo = sel ? Math.min(sel.anchor, sel.head) : -1, selHi = sel ? Math.max(sel.anchor, sel.head) : -1;
-  useEffect(() => { if (sel && document.activeElement !== root.current) root.current?.focus(); }, [sel]);
-  const selectLines = (anchor: number, head: number) => {
-    setFocus(null);
-    setSel({ anchor, head: Math.max(0, Math.min(blocks.length - 1, head)) });
-  };
-  const onSelKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (!sel || e.target !== e.currentTarget) return;
-    const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
-    const replace = (text: string) => mutate(A => { A.splice(selLo, selHi - selLo + 1, text); }, selLo, text.length);
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.shiftKey) { e.preventDefault(); selectLines(sel.anchor, sel.head + (e.key === 'ArrowUp' ? -1 : 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(null); caret.current = 0; setFocus(selLo); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(null); caret.current = 'end'; setFocus(selHi); }
-    else if (e.key === 'Escape') { e.preventDefault(); setSel(null); }
-    else if (mod && k === 'a') { e.preventDefault(); selectLines(0, blocks.length - 1); }
-    else if (formatOf(e) && !isInline(formatOf(e)!)) {
-      // Make every selected line that kind of line, or all plain text when they already are.
-      e.preventDefault();
-      const id = formatOf(e) as Exclude<FormatId, 'bold' | 'italic' | 'strike' | 'code' | 'link'>;
-      const lines = blocks.slice(selLo, selHi + 1).filter(l => !isMulti(l));
-      const on = id === 'check' ? lines.some(l => /^\s*- \[ \]/.test(l)) : lines.some(l => !isKind(l, id));
-      if (id === 'check' && on && sound) playDone();
-      update(A => { for (let j = selLo; j <= selHi; j++) if (!isMulti(A[j])) A[j] = lineEdit(A[j], id, on)?.line ?? A[j]; });
-    }
-    else if (mod && (k === 'c' || k === 'x')) {
-      e.preventDefault();
-      window.journal.copyText(blocks.slice(selLo, selHi + 1).join('\n')).catch(() => {});
-      if (k === 'x') { setSel(null); replace(''); }
-    }
-    else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); setSel(null); replace(''); }
-    else if (e.key.length === 1 && !mod && !e.altKey) { e.preventDefault(); setSel(null); replace(e.key); }
-  };
-
-  const mutate = (fn: (A: string[]) => void, nextFocus?: number | null, c: Caret = null) => {
-    caret.current = c;
-    update(A => { fn(A); if (!A.length) A.push(''); });
-    if (nextFocus !== undefined) setFocus(nextFocus);
-  };
-
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>, i: number) => {
-    const ta = e.currentTarget, bullet = bulletOf(blocks[i]), off = bullet.length;
-    // Positions count from the start of the line, bullet included.
-    const pos = ta.selectionStart + off, end = ta.selectionEnd + off, val = bullet + ta.value;
-    const multi = val.startsWith('```') || val.startsWith('|');
-    if (e.key === 'Escape') { e.preventDefault(); ta.blur(); setFocus(null); return; }
-    const fmt = formatOf(e);
-    if (fmt) {
-      // Code blocks, tables and images keep the keys' usual meaning (which is mostly none).
-      if (multi || parseBlock(val).type === 'image') return;
-      e.preventDefault(); format(fmt, ta, i); return;
-    }
-    // Shift+↑/↓ select within the line first, then whole lines.
-    if (e.shiftKey && e.key === 'ArrowUp' && ta.selectionStart === 0 && (ta.selectionDirection !== 'forward' || ta.selectionEnd === 0)) {
-      e.preventDefault(); selectLines(i, i - 1); return;
-    }
-    if (e.shiftKey && e.key === 'ArrowDown' && ta.selectionEnd === ta.value.length && (ta.selectionDirection !== 'backward' || ta.selectionStart === ta.value.length)) {
-      e.preventDefault(); selectLines(i, i + 1); return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && ta.selectionStart === 0 && ta.selectionEnd === ta.value.length && blocks.length > 1) {
-      e.preventDefault(); selectLines(0, blocks.length - 1); return;
-    }
-    if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) return;
-    // Backspace at the start of a bullet's text turns it back into a plain line.
-    if (e.key === 'Backspace' && off && ta.selectionStart === 0 && ta.selectionEnd === 0) {
-      e.preventDefault(); mutate(A => { A[i] = ta.value; }, i, 0); return;
-    }
-    if (e.key === 'Enter' && !e.shiftKey && !multi) {
-      e.preventDefault();
-      const before = val.slice(0, pos), after = val.slice(end);
-      if (/^```\w*$/.test(before.trim()) && !after) { mutate(A => { A[i] = before + '\n\n```'; }, i, before.length + 1); return; }
-      let prefix = '';
-      const m = before.match(/^(\s*)(- \[[ xX]\] |[-*] |> )/);
-      if (m) {
-        if (before.trim() === m[2].trim() && !after.trim()) { mutate(A => { A[i] = ''; }, i, 0); return; }
-        prefix = m[1] + (m[2].startsWith('- [') ? '- [ ] ' : m[2]);
-      }
-      mutate(A => { A[i] = before; A.splice(i + 1, 0, prefix + after); }, i + 1, prefix.length);
-      return;
-    }
-    if (e.key === 'Backspace' && pos === 0 && end === 0 && i > 0) {
-      const prev = blocks[i - 1], pt = parseBlock(prev).type;
-      e.preventDefault();
-      if (pt === 'code' || pt === 'table' || pt === 'image') {
-        mutate(A => { if (!val) A.splice(i, 1); }, i - 1, 'end');
-        return;
-      }
-      mutate(A => { A[i - 1] = prev + val; A.splice(i, 1); }, i - 1, prev.length);
-      return;
-    }
-    if (e.key === 'ArrowUp' && i > 0 && val.lastIndexOf('\n', pos - 1) === -1 && (!multi || pos === 0)) {
-      e.preventDefault(); caret.current = 'end'; setFocus(i - 1); return;
-    }
-    if (e.key === 'ArrowDown' && i < blocks.length - 1 && val.indexOf('\n', pos) === -1 && (!multi || pos === val.length)) {
-      e.preventDefault(); caret.current = 0; setFocus(i + 1);
-    }
-  };
-
-  /** Apply a formatting shortcut to line `i`, whose text box is `ta`. */
-  const format = (id: FormatId, ta: HTMLTextAreaElement, i: number) => {
-    const bullet = bulletOf(blocks[i]), off = bullet.length;
-    // Edits go through the text box where they can, so Ctrl+Z undoes them.
-    const replace = (from: number, to: number, text: string) => {
-      ta.setSelectionRange(from, to);
-      document.execCommand(text ? 'insertText' : 'delete', false, text);
-    };
-    if (isInline(id)) {
-      const ed = inlineEdit(ta.value, ta.selectionStart, ta.selectionEnd, id);
-      replace(ed.from, ed.to, ed.text);
-      ta.setSelectionRange(ed.selStart, ed.selEnd);
-      return;
-    }
-    const val = bullet + ta.value, r = lineEdit(val, id);
-    if (!r) return;
-    if (id === 'check' && sound && isKind(r.line, 'check')) playDone();
-    const start = Math.max(r.at, ta.selectionStart + off + r.shift), end = Math.max(r.at, ta.selectionEnd + off + r.shift);
-    const nb = bulletOf(r.line);
-    if (nb === bullet) {
-      replace(0, ta.value.length, r.line.slice(nb.length));
-      ta.setSelectionRange(start - nb.length, end - nb.length);
-    } else {
-      // Becoming a bullet or no longer one swaps the text box, so the line is changed directly.
-      mutate(A => { A[i] = r.line; }, i, start);
-    }
-  };
-
-  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>, i: number) => {
-    const ta = e.currentTarget, off = bulletOf(blocks[i]).length;
-    const text = e.clipboardData.getData('text/plain').trim();
-    const inCode = ta.value.startsWith('```') || ta.value.startsWith('|');
-    if (text && isUrl(text) && !inCode && !insideLinkSyntax(ta.value.slice(0, ta.selectionStart))) {
-      const relink = (draft: string, final: string) => update(A => {
-        const k = A.findIndex(b => b.includes(draft));
-        if (k >= 0) A[k] = A[k].replace(draft, final);
-      });
-      if (pasteUrl(ta, text, relink)) e.preventDefault();
-      return;
-    }
-    if (inCode || !mayHoldFiles(e.clipboardData)) return;
-    // Files (or what may be paths of copied files): check, then save them or paste the text after all.
-    e.preventDefault();
-    const pos = ta.selectionStart + off, raw = e.clipboardData.getData('text/plain');
-    filesFromClipboard(e.clipboardData).then(items => {
-      if (items?.length) return attach(items, i, ta, pos);
-      if (!raw) return;
-      if (document.activeElement === ta) document.execCommand('insertText', false, raw);
-      else update(A => { A[i] = A[i].slice(0, pos) + raw + A[i].slice(pos); });
-    });
-  };
-
+  /** A click below the text puts the caret at the end, on an empty line. */
   const focusEnd = (e: MouseEvent) => {
+    const v = view.current;
+    if (!v) return;
     e.preventDefault();
-    if (blocks[blocks.length - 1] !== '') mutate(A => { A.push(''); }, blocks.length, 0);
-    else { caret.current = 'end'; setFocus(blocks.length - 1); }
-  };
-
-  const tokens = (text: string) => <InlineText text={text} onOpenLink={onOpenLink} />;
-
-  const renderBlock = (src: string, pb: Block, i: number) => {
-    if (onlyEmpty) return <div style={{ fontSize: FS.body, lineHeight: 1.72, color: 'var(--faint)', cursor: 'text' }}>Start writing. Markdown renders as you type.</div>;
-    if (!live) return <div style={{ ...P, fontFamily: pb.type === 'code' || pb.type === 'table' ? MONO : UI, fontSize: pb.type === 'code' || pb.type === 'table' ? 13.5 : 16, whiteSpace: 'pre-wrap', minHeight: '1.72em', cursor: 'text' }}>{src}</div>;
-    switch (pb.type) {
-      case 'code': return (
-        <div style={{ margin: '14px 0', background: 'var(--code)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', cursor: 'text' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px 0 16px', fontFamily: MONO, fontSize: FS.xs, color: 'var(--faint)' }}>
-            <span>{pb.lang}</span>
-            <button data-link="1" className="hov-text" onClick={e => {
-              e.stopPropagation();
-              window.journal.copyText(pb.body.join('\n')).catch(() => {});
-              setCopied(i);
-              setTimeout(() => setCopied(c => (c === i ? null : c)), 1400);
-            }} style={{ border: 'none', background: 'transparent', color: 'var(--faint)', font: 'inherit', fontSize: FS.xs, padding: '2px 6px', borderRadius: 4, cursor: 'pointer' }}>{copied === i ? 'Copied' : 'Copy'}</button>
-          </div>
-          <div style={{ padding: '6px 16px 14px', fontFamily: MONO, fontSize: FS.ui, lineHeight: 1.65, overflowX: 'auto', color: 'var(--text-2)' }}>
-            {pb.body.map((ln, j) => (
-              <div key={j} style={{ whiteSpace: 'pre', minHeight: '1.65em' }}>{codeToks(ln, pb.lang).map(ct => <span key={ct.key} style={ct.style}>{ct.text}</span>)}</div>
-            ))}
-          </div>
-        </div>
-      );
-      case 'table': {
-        const n = Math.max(...pb.rows.map(r => r.length));
-        const numeric = Array.from({ length: n }, (_, c) => pb.rows.slice(1).every(r => /^[\d.,\s]+(s|ms|%)?$/.test(r[c] || '')));
-        return (
-          <div style={{ margin: '14px 0', fontSize: FS.md, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums', cursor: 'text' }}>
-            {pb.rows.map((r, ri) => (
-              <div key={ri} style={{ display: 'grid', gridTemplateColumns: `repeat(${n}, minmax(0,1fr))`, borderBottom: '1px solid var(--border)' }}>
-                {Array.from({ length: n }, (_, c) => (
-                  <div key={c} style={{ padding: '8px 12px 8px 0', textAlign: numeric[c] && c > 0 ? 'right' : 'left', fontWeight: ri === 0 ? 600 : 400, fontSize: ri === 0 ? 13 : 14.5, color: ri === 0 ? 'var(--text-2)' : 'var(--text)' }}>{tokens(r[c] || '')}</div>
-                ))}
-              </div>
-            ))}
-          </div>
-        );
-      }
-      case 'image': {
-        const rel = assets.resolve(pb.src ?? pb.name, !pb.src);
-        if (rel && isImage(rel)) return (
-          <div className="note-image" style={{ cursor: 'text' }}>
-            <img src={vaultUrl(rel)} alt={pb.name} draggable={false} />
-            <button data-link="1" className="image-open" onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }} onClick={e => { e.stopPropagation(); assets.open(rel); }}>
-              <ExternalIcon />Open
-            </button>
-          </div>
-        );
-        // An embedded non-image file (![[report.pdf]]) shows as an attachment.
-        if (rel) return <div style={{ ...P, cursor: 'text' }}><AttachmentChip label={pb.name.split('/').pop()!} target={pb.src ?? pb.name} wiki={!pb.src} /></div>;
-        return (
-          <div style={{ margin: '12px 0', padding: '18px 20px', border: '1px dashed var(--border-strong)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 6, cursor: 'text' }}>
-            <span style={{ fontFamily: MONO, fontSize: FS.sm, color: 'var(--muted)' }}>{pb.src ?? pb.name}</span>
-            <span style={{ fontSize: FS.ui, color: 'var(--faint)' }}>This file isn’t in the vault.</span>
-          </div>
-        );
-      }
-      case 'hr': return <div style={{ padding: '14px 0', cursor: 'text' }}><div style={{ height: 1, background: 'var(--border)' }} /></div>;
-      case 'empty': return <div style={{ height: 12, cursor: 'text' }} />;
-      default: {
-        const indent = 'indent' in pb ? pb.indent : 0;
-        const checked = pb.type === 'task' && pb.checked;
-        const { text, pri } = pb.type === 'task' ? splitPriMark(pb.text) : { text: pb.text, pri: null };
-        return (
-          <div style={{ display: 'flex', alignItems: 'flex-start', cursor: 'text', ...(TYPE[pb.type] || P), marginLeft: indent * 11 }}>
-            {pb.type === 'li' && <Bullet />}
-            {pb.type === 'task' && (
-              <span data-link="1" onClick={e => {
-                e.stopPropagation();
-                if (!checked && sound) playDone();
-                update(A => { A[i] = checked ? A[i].replace(/- \[[xX]\]/, '- [ ]') : A[i].replace('- [ ]', '- [x]'); });
-              }} style={{ width: 26, flex: 'none', height: '1.72em', display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                <span style={{ width: 15, height: 15, boxSizing: 'border-box', borderRadius: 4, border: checked ? '1.5px solid var(--accent-fill)' : '1.5px solid var(--border-strong)', background: checked ? 'var(--accent-fill)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {checked && <Check />}
-                </span>
-              </span>
-            )}
-            <span style={{ flex: 1, minWidth: 0, textWrap: 'pretty', color: checked ? 'var(--faint)' : undefined, textDecoration: checked ? 'line-through' : 'none' } as CSSProperties}>
-              {tokens(text)}
-              {showPri && pri && pri !== 'm' && <span title={`${PRI[pri].label} priority`} style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: PRI[pri].color, marginLeft: 10, verticalAlign: 'middle', opacity: checked ? 0.45 : 1 }} />}
-            </span>
-          </div>
-        );
-      }
-    }
+    const doc = v.state.doc, last = doc.line(doc.lines);
+    if (last.text.trim()) v.dispatch({ changes: { from: doc.length, insert: '\n' }, selection: { anchor: doc.length + 1 }, scrollIntoView: true });
+    else v.dispatch({ selection: { anchor: doc.length } });
+    v.focus();
   };
 
   return (
-    <div ref={root} data-editor="" tabIndex={-1} onKeyDown={onSelKey} onBlur={e => { if (e.target === e.currentTarget) setSel(null); }}
-      style={{ color: 'var(--text)', outline: 'none' }} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={e => { if (e.currentTarget === e.target) setDropAt(null); }}>
-      {blocks.map((src, i) => {
-        const pb = parseBlock(src), editing = focus === i, bullet = editing ? bulletOf(src) : '';
-        let body;
-        if (editing) {
-          const multi = pb.type === 'code' || pb.type === 'table';
-          const T = TYPE[pb.type] || P;
-          const style: CSSProperties = { display: 'block', width: '100%', boxSizing: 'border-box', resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text)', fontFamily: UI, padding: 0, overflow: 'hidden', caretColor: 'var(--accent)', fontSize: T.fontSize, lineHeight: T.lineHeight, fontWeight: T.fontWeight || 400, letterSpacing: T.letterSpacing || 'normal', margin: T.margin };
-          if (multi) Object.assign(style, { fontFamily: MONO, fontSize: FS.ui, lineHeight: 1.65, fontWeight: 400, margin: '14px 0', padding: '12px 16px', background: 'var(--code)', border: '1px solid var(--accent-ring)', borderRadius: 8, color: 'var(--text-2)' });
-          if (pb.type === 'image') Object.assign(style, { fontFamily: MONO, fontSize: FS.ui, margin: '16px 0' });
-          body = (
-            <textarea
-              ref={taRef} value={src.slice(bullet.length)} data-off={bullet.length} rows={1} spellCheck={spell} style={style}
-              placeholder={onlyEmpty ? (isDaily ? 'How did today go? Markdown renders as you type.' : 'Start writing…') : ''}
-              onChange={e => {
-                const el = e.target; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px';
-                const v = bullet + el.value;
-                // Typing `- ` makes a bullet (or `[ ] ` after it a checkbox): the text box is
-                // replaced, so tell the new one where the caret is.
-                if (bulletOf(v) !== bullet) caret.current = bullet.length + el.selectionStart;
-                update(A => { A[i] = v; });
-              }}
-              onKeyDown={e => onKey(e, i)}
-              onBlur={() => setFocus(f => (f === i ? null : f))}
-              onPaste={e => onPaste(e, i)}
-            />
-          );
-          if (bullet) body = <div style={{ display: 'flex', alignItems: 'flex-start', marginLeft: (bullet.length - 2) * 11 }}><Bullet />{body}</div>;
-        } else body = renderBlock(src, pb, i);
-        const selected = i >= selLo && i <= selHi;
-        return (
-          <div key={i} data-bi={i} className={[dropAt === i && 'drop-target', selected && 'line-selected'].filter(Boolean).join(' ') || undefined} style={{ position: 'relative' }} onMouseDown={e => {
-            // Shift+click selects whole lines, from the line being edited (or selected) to this one.
-            if (e.shiftKey && (focus !== null || sel)) { e.preventDefault(); selectLines(sel ? sel.anchor : focus!, i); return; }
-            setSel(null);
-            if ((e.target as HTMLElement).closest('[data-link]') || editing) return;
-            e.preventDefault(); caret.current = 'end'; setFocus(i);
-          }}>{body}</div>
-        );
-      })}
+    <div data-editor="" className="note-editor" style={{ color: 'var(--text)', fontFamily: UI, '--mono': MONO } as CSSProperties}>
+      <div ref={host} />
       <div onMouseDown={focusEnd} style={{ height: 200, cursor: 'text' }} />
     </div>
   );

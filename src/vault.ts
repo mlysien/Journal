@@ -523,7 +523,7 @@ export function useVault(initial: Loaded) {
 
 /* ---------- priority marks ---------- */
 
-const PRI_MARK = /\s+!(high|med|medium|low)\s*$/i;
+export const PRI_MARK = /\s+!(high|med|medium|low)\s*$/i;
 
 export function splitPriMark(text: string): { text: string; pri: Pri | null } {
   const m = text.match(PRI_MARK);
